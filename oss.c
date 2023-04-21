@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <stdbool.h>
 #include <sys/msg.h>
+#include <resources.h>
 
 
 
@@ -25,7 +26,7 @@
 //Message struct
 struct my_msgbuf {
 	long mtype;
-	int timeQuantum;
+	int resource;
 	int intData;
 } my_msgbuf;
 
