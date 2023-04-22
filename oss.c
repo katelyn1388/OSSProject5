@@ -86,11 +86,162 @@ int msqid;
 key_t key;
 char secondsString[20];
 char nanoSecondsString[20];
+int availableResources[10] = {};
 
 
 int main(int argc, char **argv) {
+	bool doneTerminating = false;
+
+	while((c = getopt(argc, argv, "hf:")) != -1) {
+		switch(c)
+		{
+			case 'h':
+				help();
+			case 'f':
+				userFile = optarg;
+				fileGiven = true;
+				break;
+		}
+	}
 
 
+
+
+	//Opening log file
+	if(fileGiven) 
+		logFile = fopen(userFile, "w");
+	else
+		logFile = fopen("logfile.txt", "w");
+
+
+	//Setting up interrupt
+	if(setupinterrupt() == -1) {
+		perror("Failed to set up handler for SIGPROF");
+		return 1;
+	}
+
+	if(setupitimer() == -1) {
+		perror("Failed to set up the ITIMER_PROF interval timer");
+		return 1;
+	}
+
+	signal(SIGINT, myhandler);
+
+	for( ; ; )
+	{
+		printf("\nProgram running in OSS\n");
+		int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
+		if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
+			fprintf(stderr, "Shared memory get failed\n");
+			exit(1);
+		}
+
+
+		//Initializing shared memory for nano seconds
+		int nano_id = shmget(nano_key, sizeof(int) * 10, IPC_CREAT | 0666);
+		if(nano_id <= 0) {
+			fprintf(stderr, "Shared memory for nanoseconds failed\n");
+			exit(1);
+		}
+
+
+		const int *sec_ptr = (int *) shmat(sec_id, 0, 0);      //Pointer to shared memory address
+		if(sec_ptr <= 0) {                               //Testing if pointer is actually working
+			fprintf(stderr, "Shared memory attach failed\n");
+			exit(1);
+		}
+
+
+		const int *nano_ptr = (int *) shmat(nano_id, 0, 0);
+		if(nano_ptr <= 0) {
+			fprintf(stderr, "Shared memory attachment for nanoseconds failed\n");
+			exit(1);
+		}
+
+
+
+		//Setting seconds and nanoseconds to initial values
+		int * seconds = (int *)(sec_ptr);
+		*seconds = 0;
+
+		int * nanoSeconds = (int *)(nano_ptr);
+		*nanoSeconds = 0;
+
+		//Message queue setup
+		system("touch msgq.txt");
+		if((key = ftok("msgq.txt", 'B')) == -1) {
+			perror("ftok");
+			exit(1);
+		}
+
+		if((msqid = msgget(key, PERMS | IPC_CREAT)) == -1) {
+			perror("msgget");
+			exit(1);
+		}
+
+		message.mtype = 1;
+		message.timeQuantum = 200000;   //Time quantum of 200,000 ns
+
+
+		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
+		time_t startTime, endTime;
+		startTime = time(NULL);
+		endTime = startTime + 3;
+
+		//Max second and nanosecond for random creation time
+		int maxNewNano = 100000000;
+		int maxNewSec = 5;
+	
+		//First random creation time
+		srand(getpid());
+		int creationSeconds = rand() % maxNewSec;
+		int creationNanoSecs = rand() % maxNewNano;
+
+
+		//Keep running until all processes are terminated
+		while(!doneRunning) {
+
+		}
+
+		
+		
+		
+		
+		//Calculating average stats for all processes
+		averageCpu = (totalCpu / (double)totalWorkers);
+		averageWait = (totalWait / (double)totalWorkers);
+		averageBlockedTime = (totalBlockedTime / (double)totalWorkers);
+
+		fprintf(logFile, "\nAverage CPU utlization: %f%%", averageCpu);
+		fprintf(logFile, "\nAverage wait time: %f", averageWait);
+		fprintf(logFile, "\nAverage blocked time: %f", averageBlockedTime);
+		fprintf(logFile, "\nTotal CPU idle time: %f\n", idleTime);
+
+
+
+
+		//Deallocating shared memory
+		shmdt(sec_ptr);
+		shmctl(sec_id, IPC_RMID, NULL);
+
+		shmdt(nano_ptr);
+		shmctl(nano_id, IPC_RMID, NULL);
+
+		//Closing log file
+		fclose(logFile);
+
+		//Closing message queue
+		if(msgctl(msqid, IPC_RMID, NULL) == -1) {
+			perror("msgctl");
+			exit(1);
+		}
+
+		printf("\n\n\n\nProgram is done\n");
+		return(0);
+
+	
+
+	}
 }
 
 
