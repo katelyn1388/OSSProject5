@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <sys/msg.h>
 #include <errno.h>
-#include <resources.h>
+#include "resources.h"
 
 
 #define PERMS 0644
@@ -46,9 +46,6 @@ int main(int argc, char** iterations) {
 		exit(1);
 	}
 
-	//Assigning variable to quanutm from oss
-	int quantum = message.timeQuantum;
-
 
 	//Attaching to shared memory from here til line 81
 	const int sec_key = 25217904;
@@ -80,27 +77,27 @@ int main(int argc, char** iterations) {
 	}
 
 	int * sharedSeconds = (int *)(sec_ptr);
-	int * sharedNanoSecs = (int *)(nano_ptr);
+	int * sharedNanoSeconds = (int *)(nano_ptr);
 
-	int starterNano = *sharedNanoSecs;
+	int starterNano = *sharedNanoSeconds;
 	int starterSec = *sharedSeconds + 1;
 
 
 	//Random number generator
 	srand(getpid());
 	bool terminated = false, firstTime = true;
-	int randTimeMax = 250000000;
+	int randTimeMax = 250000000, billion = 1000000000;
 	int task;
 
 	//First random time to termiante, request resources, or release
 	int randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;
 	int chooseTimeNano = *sharedNanoSeconds, chooseTimeSec = *sharedSeconds;
 	if((*sharedNanoSeconds + randomTime) < billion)
-		chooseTime += randomTime;
+		chooseTimeNano += randomTime;
 	else
 	{
-		chooseTime = ((*sharedNanoSeconds + randomTime) - billion);
-		chooseSecond += 1;
+		chooseTimeNano = ((*sharedNanoSeconds + randomTime) - billion);
+		chooseTimeSec += 1;
 	}
 
 	//Setting message queue variables to send back to parent
@@ -123,7 +120,7 @@ int main(int argc, char** iterations) {
 				terminated = true;
 				//send message to parent that they're terminating and releasing all resources
 			} else if(task >= 1 && task <= 95) {
-				message.resource = (rand()
+				message.resource = (rand() % (10 - 1 + 1)) + 1;
 				//Pick a random resource, send to parent the request
 			}
 
@@ -136,3 +133,5 @@ int main(int argc, char** iterations) {
 
 
 	return 0;
+
+}

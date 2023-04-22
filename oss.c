@@ -16,7 +16,7 @@
 #include <sys/time.h>
 #include <stdbool.h>
 #include <sys/msg.h>
-#include <resources.h>
+#include "resources.h"
 
 
 
@@ -45,16 +45,9 @@ FILE *logFile;
 //Process table blocks
 struct PCB {
 	int occupied;
-	pid_t simulatedPid;
 	pid_t actualPid;
-	double timeInSystem;
-	double cpuTimeUsed;      //divide this by 1B at end to get seconds and nanoseconds
-	double startTime;
-	double lastTimeRan;
-	double blockedTime;
-	int blockedSeconds;
-	int blockedNanoSecs;
-	double timeRan;   //For average wait time - multiple this by the quantum, divide by time elapsed in system while it ran    just use cpu time instead
+	int currentResources[10];
+	int requestedResource;
 };
 
 //Process table
@@ -86,11 +79,14 @@ int msqid;
 key_t key;
 char secondsString[20];
 char nanoSecondsString[20];
-int availableResources[10] = {};
+int availableResources[10] = { totalResources };
+int resourceRequests[10] = { 0 };
+int resourceReleases[10] = { 0 }'
 
 
 int main(int argc, char **argv) {
-	bool doneTerminating = false;
+	bool doneRunning = false, fileGiven = false;
+	char *userFile = NULL;
 
 	while((c = getopt(argc, argv, "hf:")) != -1) {
 		switch(c)
@@ -105,6 +101,9 @@ int main(int argc, char **argv) {
 	}
 
 
+	printf("Program is starting...");
+	printf("Total resources: %d", totalResources);
+	//printf("Middle element in array: %d", availableResources[4]);
 
 
 	//Opening log file
@@ -180,7 +179,6 @@ int main(int argc, char **argv) {
 		}
 
 		message.mtype = 1;
-		message.timeQuantum = 200000;   //Time quantum of 200,000 ns
 
 
 		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
@@ -189,17 +187,31 @@ int main(int argc, char **argv) {
 		endTime = startTime + 3;
 
 		//Max second and nanosecond for random creation time
-		int maxNewNano = 100000000;
-		int maxNewSec = 5;
+		int maxNewNano = 500000000;
 	
 		//First random creation time
 		srand(getpid());
-		int creationSeconds = rand() % maxNewSec;
-		int creationNanoSecs = rand() % maxNewNano;
+		int randomTime = rand() % maxNewNano;
+		int chooseTimeNano = *sharedNanoSeconds, chooseTimeSec = *sharedSeconds;
+		if((*sharedNanoSeconds + randomTime) < billion)
+			chooseTimeNano += randomTime;
+		else
+		{
+			chooseTimeNano = ((*sharedNanoSeconds + randomTime) - billion);
+			chooseTimeSec += 1;
+		}
+
 
 
 		//Keep running until all processes are terminated
 		while(!doneRunning) {
+			if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
+				if(simulWorkers < 18) {
+					
+				}
+			}
+
+			incrementClock(
 
 		}
 
@@ -563,4 +575,81 @@ struct PCB Front(int processType) {
 		exit(1);
 	}
 	return blockedQueue[blockedFront];
+}
+
+
+
+//Handler function for signal to stop program after 60 seconds or with Ctrl + C
+static void myhandler(int s) {
+	int i, pid;
+	for(i = 0; i <= 19; i++) {
+		pid = processTable[i].actualPid;
+		kill(pid, SIGKILL);
+	}
+
+	int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
+	if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
+		fprintf(stderr, "Shared memory get failed\n");
+		exit(1);
+	}
+
+
+	//Initializing shared memory for nano seconds
+	int nano_id = shmget(nano_key, sizeof(int) * 10, IPC_CREAT | 0666);
+	if(nano_id <= 0) {
+		fprintf(stderr, "Shared memory for nanoseconds failed\n");
+		exit(1);
+	}
+
+
+	const int *sec_ptr = (int *) shmat(sec_id, 0, 0);      //Pointer to shared memory address
+	if(sec_ptr <= 0) {                               //Testing if pointer is actually working
+		fprintf(stderr, "Shared memory attach failed\n");
+		exit(1);
+	}
+
+
+	const int *nano_ptr = (int *) shmat(nano_id, 0, 0);
+	if(nano_ptr <= 0) {
+		fprintf(stderr, "Shared memory attachment for nanoseconds failed\n");
+		exit(1);
+	}
+
+	averageCpu = (totalCpu / (double)totalWorkers);
+	averageWait = (totalWait / (double)totalWorkers);
+	averageBlockedTime = (totalBlockedTime / (double)totalWorkers);
+
+	fprintf(logFile, "\nAverage CPU utlization: %f%%", averageCpu);
+	fprintf(logFile, "\nAverage wait time: %f", averageWait);
+	fprintf(logFile, "\nAverage blocked time: %f", averageBlockedTime);
+	fprintf(logFile, "\nTotal CPU idle time: %f\n", idleTime);
+
+	shmdt(sec_ptr);
+	shmctl(sec_id, IPC_RMID, NULL);
+	shmdt(nano_ptr);
+	shmctl(nano_id, IPC_RMID, NULL);
+	fclose(logFile);
+
+	if(msgctl(msqid, IPC_RMID, NULL) == -1) {
+		perror("msgctl");
+		exit(1);
+	}
+	exit(1);
+}
+
+
+//Interrupt and timer functions for signal
+static int setupinterrupt(void) {
+	struct sigaction act;
+	act.sa_handler = myhandler;
+	act.sa_flags = 0;
+	return (sigemptyset(&act.sa_mask) || sigaction(SIGPROF, &act, NULL));
+}
+
+static int setupitimer(void) {
+	struct itimerval value;
+	value.it_interval.tv_sec = 60;
+	value.it_interval.tv_usec = 0;
+	value.it_value = value.it_interval;
+	return (setitimer(ITIMER_PROF, &value, NULL));
 }
