@@ -18,6 +18,7 @@
 struct my_msgbuf {
 	long mtype;
 	int resource;
+	int choice;     //1 = request, 2 = release, 3 = terminate
 	int intData;
 }my_msgbuf;
 

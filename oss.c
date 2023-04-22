@@ -26,6 +26,7 @@
 struct my_msgbuf {
 	long mtype;
 	int resource;
+	int choice;     //1 = request, 2 = release, 3 = terminate
 	int intData;
 } my_msgbuf;
 
@@ -45,7 +46,7 @@ FILE *logFile;
 //Process table blocks
 struct PCB {
 	int occupied;
-	pid_t actualPid;
+	pid_t pid;
 	int currentResources[10];
 	int requestedResource;
 };
@@ -81,7 +82,7 @@ char secondsString[20];
 char nanoSecondsString[20];
 int availableResources[10] = { totalResources };
 int resourceRequests[10] = { 0 };
-int resourceReleases[10] = { 0 }'
+int resourceReleases[10] = { 0 };
 
 
 int main(int argc, char **argv) {
@@ -192,12 +193,12 @@ int main(int argc, char **argv) {
 		//First random creation time
 		srand(getpid());
 		int randomTime = rand() % maxNewNano;
-		int chooseTimeNano = *sharedNanoSeconds, chooseTimeSec = *sharedSeconds;
-		if((*sharedNanoSeconds + randomTime) < billion)
+		int chooseTimeNano = *seconds, chooseTimeSec = *seconds;
+		if((*nanoSeconds + randomTime) < billion)
 			chooseTimeNano += randomTime;
 		else
 		{
-			chooseTimeNano = ((*sharedNanoSeconds + randomTime) - billion);
+			chooseTimeNano = ((*seconds + randomTime) - billion);
 			chooseTimeSec += 1;
 		}
 
@@ -205,13 +206,27 @@ int main(int argc, char **argv) {
 
 		//Keep running until all processes are terminated
 		while(!doneRunning) {
-			if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
-					
+					tempPid = fork();
+
+					processTable[totalWorkers].occupied = 1;
+					processTable[totalWorkers].pid = tempPid;
+
+					char* args[] = {"./worker", 0};
+
+					if(tempPid == 0) {
+						execlp(args[0], args[0], args[1]);
+						printf(stderr, "Exec failed, terminating");
+						exit(1);
+					}
+
+					simulWorkers++;
+					totalWorkers++;
 				}
 			}
 
-			incrementClock(
+			incrementClock(5000);
 
 		}
 
@@ -583,7 +598,7 @@ struct PCB Front(int processType) {
 static void myhandler(int s) {
 	int i, pid;
 	for(i = 0; i <= 19; i++) {
-		pid = processTable[i].actualPid;
+		pid = processTable[i].pid;
 		kill(pid, SIGKILL);
 	}
 
