@@ -49,6 +49,7 @@ struct PCB {
 	pid_t pid;
 	int currentResources[10];
 	int requestedResource;
+	
 };
 
 //Process table
@@ -72,8 +73,8 @@ struct PCB Front(int processType);
 
 
 //global variables
-int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, nanoIncrement = 50000000, c, fileLines = 1, fileLineMax = 9995;
-double averageCpu = 0, averageWait = 0, averageBlockedTime = 0, totalCpu = 0, totalWait = 0, totalBlockedTime = 0, idleTime = 0, idleStart = 0, billion = 1000000000;
+int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, nanoIncrement = 50000000, c, fileLines = 1, fileLineMax = 9995, messageReceived, billion = 1000000000, resourceRequest = 0;
+int processChoice = 0;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -86,7 +87,7 @@ int resourceReleases[10] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool doneRunning = false, fileGiven = false;
+	bool doneRunning = false, fileGiven = false, messageReceivedBool = false;
 	char *userFile = NULL;
 
 	while((c = getopt(argc, argv, "hf:")) != -1) {
@@ -185,7 +186,7 @@ int main(int argc, char **argv) {
 		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
 		time_t startTime, endTime;
 		startTime = time(NULL);
-		endTime = startTime + 3;
+		endTime = startTime + 5;
 
 		//Max second and nanosecond for random creation time
 		int maxNewNano = 500000000;
@@ -204,8 +205,8 @@ int main(int argc, char **argv) {
 
 
 
-		//Keep running until all processes are terminated
-		while(!doneRunning) {
+		//Keep running until 40 processes have run or 5 real-life seconds have passed
+		while(totalWorkers < 40 && (time(NULL) > endTime)) {
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
 					tempPid = fork();
@@ -225,6 +226,30 @@ int main(int argc, char **argv) {
 					totalWorkers++;
 				}
 			}
+
+			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 1) == -1)) {
+				perror("\n\nFailed to receive message from child\n");
+				exit(1);
+			} else if(messageReceived = 0) {
+				messageReceivedBool = true;
+				requestedResource = message.resource;
+				processChoice = message.choice;
+			} else
+				messageReceivedBool = false;
+
+
+			//If process is requesting a resource
+			if(messageReceivedBool == true && processChoice == 1) {
+				if(availableResources[requestedResource] > 0) {
+					//reduce available resource, increase resource request
+				}
+
+
+			}  //If process is releasing a resource
+		       	else if(messageReceivedBool == true) {
+
+			}
+
 
 			incrementClock(5000);
 
@@ -274,9 +299,8 @@ int main(int argc, char **argv) {
 
 int help() {
 	printf("\nThis program takes in a text file, uses it as a log file, and prints to it the output of the following:\n");
-	printf("When the program starts, it will begin launching user processes that will each choose a random number and either terminate, use their whole time quantum, or use");
-	printf("part of its time quantum. It will then send a message back to the main oss process of its choice. \nThe program will terminate after either 100 processes have been");
-	printf("launched or 3 real life seconds have passed.");
+	printf("When the program starts, it will begin launching user processes that will each choose a random number and either terminate, request a resource, or release a resource");
+	printf("\nThe program will terminate after either 40 processes have been launched or 5 real life seconds have passed");
 	printf("\n\nInput Options:");
 	printf("\n-h     output a short description of the project and how to run it");
 	printf("\n-f     the name of the file for output to be logged in");
