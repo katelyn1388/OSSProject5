@@ -20,7 +20,6 @@
 
 
 
-
 #define PERMS 0644
 
 //Message struct
@@ -157,7 +156,7 @@ void incrementClock(int nanoIncrement) {
 
 
 
-void runProcess(int processType) {
+/*void runProcess(int processType) {
 	//Shared memory attachment
 	int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
 	if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
@@ -351,39 +350,26 @@ void runProcess(int processType) {
 		}
 
 	}
-}
+}*/
 
 
 //Queues
-struct PCB readyQueue[max_processes];
 struct PCB blockedQueue[max_processes];
 
 //Queue function pointers
-int readyFront =  -1; 
-int readyRear = -1;
 int blockedFront = -1;
 int blockedRear = -1;
 
 
 
 bool isEmpty(int processType) {
-	//1 = ready queue
-	if(processType == 1) {
-		return(readyFront == -1 && readyRear == -1);
-	} else
-		return(blockedFront == -1 && blockedRear == -1);
+	return(blockedFront == -1 && blockedRear == -1);
 }
 
 
 bool isFull(int processType) {
-	if(processType == 1) {
-		if((readyRear + 1) + readyFront == max_processes)
-			return true;
-	}
-	else {
-		if((blockedRear + 1) + blockedFront == max_processes) 
-			return true;
-	}
+	if((blockedRear + 1) + blockedFront == max_processes) 
+		return true;
 
 	return false;
 }
@@ -391,76 +377,39 @@ bool isFull(int processType) {
 
 //Adding process to queue
 void Enqueue(struct PCB process, int processType) {
-	if(processType == 1) {
-		if(isFull(1)) {
-			return;
-		}
-		if(isEmpty(1)) {
-			readyFront = readyRear = 0;
-		} else {
-			readyRear += 1;
-			if(readyRear == max_processes)
-				readyRear = readyRear % max_processes;
-		}
-
-		readyQueue[readyRear] = process;
-	} else {
-		if(isFull(2)) {
-			return;
-		}
-		if(isEmpty(2)) 
-			blockedFront = blockedRear = 0;
-		else {
-			blockedRear += 1;
-			if(blockedRear == max_processes) 
-				blockedRear = blockedRear % max_processes;
-		}
-
-		blockedQueue[blockedRear] = process;
+	if(isFull(2)) 
+		return;
+		
+	if(isEmpty(2)) 
+		blockedFront = blockedRear = 0;
+	else {
+		blockedRear += 1;
+		if(blockedRear == max_processes) 
+			blockedRear = blockedRear % max_processes;
 	}
+
+	blockedQueue[blockedRear] = process;
+	
 }
 
 //Removing process from queue
 void Dequeue(int processType) {
-	if(processType == 1) {
-		if(isEmpty(1)) {
-			printf("\n\nError: Ready queue is empty\n\n");
-			return;
-		} else if(readyFront == readyRear) 
-			readyRear = readyFront = -1;
-		else {
-			readyFront += 1;
-			if(readyFront == max_processes)
-				readyFront = readyFront % max_processes;
-		}
-	} else {
-		if(isEmpty(2)) {
-			printf("\n\nError: Blocked queue is empty\n\n");
-			return;
-		} else if(blockedFront == blockedRear)
-			blockedRear = blockedFront = -1;
+	if(isEmpty(2)) {
+		printf("\n\nError: Blocked queue is empty\n\n");
+		return;
+	} else if(blockedFront == blockedRear)
+		blockedRear = blockedFront = -1;
 	else {
-			blockedFront += 1;
-			if(blockedFront == max_processes)
-				blockedFront = blockedFront % max_processes;
-		}
+		blockedFront += 1;
+		if(blockedFront == max_processes)
+			blockedFront = blockedFront % max_processes;
 	}
 }
 
 struct PCB Front(int processType) {
-	if(processType == 1) {
-		if(readyFront == -1) {
-			printf("\n\nError: Cannot return front from empty queue: ready\n\n");
-			exit(1);
-		}
-		return readyQueue[readyFront];
-	} else {
-		if(blockedRear == -1) {
-			printf("\n\nError: Cannot return front of empty queue: blocked\n\n");
-			exit(1);
-		}
-		return blockedQueue[blockedFront];
+	if(blockedRear == -1) {
+		printf("\n\nError: Cannot return front of empty queue: blocked\n\n");
+		exit(1);
 	}
+	return blockedQueue[blockedFront];
 }
-
-
