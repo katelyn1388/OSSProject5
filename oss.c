@@ -27,6 +27,7 @@ struct my_msgbuf {
 	long mtype;
 	int resource;
 	int choice;     //1 = request, 2 = release, 3 = terminate
+	int pid;
 	int intData;
 } my_msgbuf;
 
@@ -74,14 +75,14 @@ struct PCB Front(int processType);
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, nanoIncrement = 50000000, c, fileLines = 1, fileLineMax = 9995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
 key_t key;
 char secondsString[20];
 char nanoSecondsString[20];
-int availableResources[10] = { totalResources };
+int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, };
 int resourceRequests[10] = { 0 };
 int resourceReleases[10] = { 0 };
 
@@ -89,6 +90,7 @@ int resourceReleases[10] = { 0 };
 int main(int argc, char **argv) {
 	bool doneRunning = false, fileGiven = false, messageReceivedBool = false;
 	char *userFile = NULL;
+	struct PCB currentProcess;
 
 	while((c = getopt(argc, argv, "hf:")) != -1) {
 		switch(c)
@@ -104,8 +106,6 @@ int main(int argc, char **argv) {
 
 
 	printf("Program is starting...");
-	printf("Total resources: %d", totalResources);
-	//printf("Middle element in array: %d", availableResources[4]);
 
 
 	//Opening log file
@@ -130,7 +130,6 @@ int main(int argc, char **argv) {
 
 	for( ; ; )
 	{
-		printf("\nProgram running in OSS\n");
 		int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
 		if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
 			fprintf(stderr, "Shared memory get failed\n");
@@ -209,10 +208,17 @@ int main(int argc, char **argv) {
 		while(totalWorkers < 40 && (time(NULL) > endTime)) {
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
+					for(i = 0; i < 18; i++) {
+						if(processTable[i].occupied == 0) {
+							currentProcess = processTable[i];
+							break;
+						}
+					}
+
 					tempPid = fork();
 
-					processTable[totalWorkers].occupied = 1;
-					processTable[totalWorkers].pid = tempPid;
+					currentProcess.occupied = 1;
+					currentProcess.pid = tempPid;
 
 					char* args[] = {"./worker", 0};
 
@@ -227,12 +233,12 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 1) == -1)) {
+			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1)) {
 				perror("\n\nFailed to receive message from child\n");
 				exit(1);
 			} else if(messageReceived = 0) {
 				messageReceivedBool = true;
-				requestedResource = message.resource;
+				resourceRequest = message.resource;
 				processChoice = message.choice;
 			} else
 				messageReceivedBool = false;
@@ -240,8 +246,38 @@ int main(int argc, char **argv) {
 
 			//If process is requesting a resource
 			if(messageReceivedBool == true && processChoice == 1) {
-				if(availableResources[requestedResource] > 0) {
-					//reduce available resource, increase resource request
+				currentPid = message.pid;
+				for(i = 0; i < 18; i++) {
+					if(processTable[i].pid == currentPid) {
+						currentProcess = processTable[i];
+						break;
+					} 	
+				}
+
+				//Increasing the number of requests for that resource
+				resourceRequests[resourceRequest] += 1;
+				if(availableResources[resourceRequest] > 0) {
+					//reduce available resource and resource requests since it was granted
+					availableResources[resourceRequest] -= 1;
+					resourceRequests[resourceRequest] -= 1;
+
+					grantedInstantly++;
+					
+					//Sending message back to child that request was granted
+					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+						perror("\n\nmsgsend to child failed\n\n");
+						exit(1);
+					}
+					//Increasing number of resources by 1 for process
+					currentProcess.currentResources[resourceRequest] += 1;
+
+				} else {
+					//process gets blocked and requested resource gets set for future granting
+					blocked++;
+					currentProcess.requestedResource = resourceRequest;
+					
+					//putting process in blocked queue
+					Enqueue(currentProcess);
 				}
 
 
@@ -256,20 +292,6 @@ int main(int argc, char **argv) {
 		}
 
 		
-		
-		
-		
-		//Calculating average stats for all processes
-		averageCpu = (totalCpu / (double)totalWorkers);
-		averageWait = (totalWait / (double)totalWorkers);
-		averageBlockedTime = (totalBlockedTime / (double)totalWorkers);
-
-		fprintf(logFile, "\nAverage CPU utlization: %f%%", averageCpu);
-		fprintf(logFile, "\nAverage wait time: %f", averageWait);
-		fprintf(logFile, "\nAverage blocked time: %f", averageBlockedTime);
-		fprintf(logFile, "\nTotal CPU idle time: %f\n", idleTime);
-
-
 
 
 		//Deallocating shared memory
@@ -564,12 +586,12 @@ int blockedRear = -1;
 
 
 
-bool isEmpty(int processType) {
+bool isEmpty() {
 	return(blockedFront == -1 && blockedRear == -1);
 }
 
 
-bool isFull(int processType) {
+bool isFull() {
 	if((blockedRear + 1) + blockedFront == max_processes) 
 		return true;
 
@@ -578,11 +600,11 @@ bool isFull(int processType) {
 
 
 //Adding process to queue
-void Enqueue(struct PCB process, int processType) {
-	if(isFull(2)) 
+void Enqueue(struct PCB process) {
+	if(isFull()) 
 		return;
 		
-	if(isEmpty(2)) 
+	if(isEmpty()) 
 		blockedFront = blockedRear = 0;
 	else {
 		blockedRear += 1;
@@ -595,8 +617,8 @@ void Enqueue(struct PCB process, int processType) {
 }
 
 //Removing process from queue
-void Dequeue(int processType) {
-	if(isEmpty(2)) {
+void Dequeue() {
+	if(isEmpty()) {
 		printf("\n\nError: Blocked queue is empty\n\n");
 		return;
 	} else if(blockedFront == blockedRear)
@@ -608,7 +630,7 @@ void Dequeue(int processType) {
 	}
 }
 
-struct PCB Front(int processType) {
+struct PCB Front() {
 	if(blockedRear == -1) {
 		printf("\n\nError: Cannot return front of empty queue: blocked\n\n");
 		exit(1);
@@ -654,14 +676,6 @@ static void myhandler(int s) {
 		exit(1);
 	}
 
-	averageCpu = (totalCpu / (double)totalWorkers);
-	averageWait = (totalWait / (double)totalWorkers);
-	averageBlockedTime = (totalBlockedTime / (double)totalWorkers);
-
-	fprintf(logFile, "\nAverage CPU utlization: %f%%", averageCpu);
-	fprintf(logFile, "\nAverage wait time: %f", averageWait);
-	fprintf(logFile, "\nAverage blocked time: %f", averageBlockedTime);
-	fprintf(logFile, "\nTotal CPU idle time: %f\n", idleTime);
 
 	shmdt(sec_ptr);
 	shmctl(sec_id, IPC_RMID, NULL);

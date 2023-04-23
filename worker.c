@@ -19,6 +19,7 @@ struct my_msgbuf {
 	long mtype;
 	int resource;
 	int choice;     //1 = request, 2 = release, 3 = terminate
+	int pid;
 	int intData;
 }my_msgbuf;
 
@@ -104,6 +105,7 @@ int main(int argc, char** iterations) {
 	//Setting message queue variables to send back to parent
 	message.intData = getppid();
 	message.mtype = getppid();
+	message.pid = getpid();
 
 	//Do nothing before at least 1 second has passed
 	while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
@@ -120,9 +122,11 @@ int main(int argc, char** iterations) {
 			if(task == 0) {
 				terminated = true;
 				//send message to parent that they're terminating and releasing all resources
+
 			} else if(task >= 1 && task <= 95) {
 				message.resource = (rand() % (10 - 1 + 1)) + 1;
 				//Pick a random resource, send to parent the request
+
 			}
 
 
