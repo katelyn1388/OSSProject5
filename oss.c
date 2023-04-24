@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
 
 
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
-		while(totalWorkers < 40 && (time(NULL) > endTime)) {
+		while((totalWorkers < 40) && (time(NULL) > endTime)) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
@@ -314,6 +314,7 @@ int main(int argc, char **argv) {
 						if(processTable[i].requestedResource = resource) {
 							currentProcess = processTable[i];
 							break;
+						}
 					}
 
 					//Tell lucky process their wish is granted
@@ -325,10 +326,11 @@ int main(int argc, char **argv) {
 					}
 
 					//decrease the process's requests, decrease available resources, and decrease number of blocked processes
-					currentProcess.resourceRequest = -1;
+					currentProcess.requestedResource = -1;
 					availableResources[resource] -= 1;
 					blocked--;
 				}
+				
 			//If a message was received and the process is terminating 
 			} else if(messageReceivedBool == true && processChoice == 3) {
 				//Reset PCB table entries for this process
@@ -351,7 +353,7 @@ int main(int argc, char **argv) {
 								//For each process that might need that resource
 								for(j = 0; j < 18; j++) {
 									//If the currently tested process needs that resource
-									if(processTable[j].requestedResource = resource) {
+									if(processTable[j].requestedResource = resourceRequest) {
 
 										//Send process the message that they're finally getting the resource
 										message.mtype = processTable[j].pid;
@@ -362,7 +364,7 @@ int main(int argc, char **argv) {
 										}
 										
 										//Decrease the available instances of that resource, the requests for it, and the process's request 
-										processTable[j].resourceRequest = -1;
+										processTable[j].requestedResource = -1;
 										availableResources[i] -= 1;
 										resourceRequests[i] -= 1;
 										//Remove one blocked processs since it got its required resource
