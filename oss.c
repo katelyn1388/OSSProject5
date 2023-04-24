@@ -75,7 +75,7 @@ struct PCB Front(int processType);
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, nanoIncrement = 50000000, c, fileLines = 1, fileLineMax = 9995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -206,6 +206,7 @@ int main(int argc, char **argv) {
 
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while(totalWorkers < 40 && (time(NULL) > endTime)) {
+			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
 					for(i = 0; i < 18; i++) {
@@ -215,13 +216,16 @@ int main(int argc, char **argv) {
 						}
 					}
 
+					//Forking child
 					tempPid = fork();
 
+					//Filling out process table for child process
 					currentProcess.occupied = 1;
 					currentProcess.pid = tempPid;
 
 					char* args[] = {"./worker", 0};
 
+					//Execing child off
 					if(tempPid == 0) {
 						execlp(args[0], args[0], args[1]);
 						printf(stderr, "Exec failed, terminating");
@@ -230,16 +234,36 @@ int main(int argc, char **argv) {
 
 					simulWorkers++;
 					totalWorkers++;
+
+					//Setting new random time for next process creation
+					randomTime = rand() % maxNewNano;
+					chooseTimeNano = *seconds, chooseTimeSec = *seconds;
+					if((*nanoSeconds + randomTime) < billion)
+						chooseTimeNano += randomTime;
+					else
+					{
+						chooseTimeNano = ((*seconds + randomTime) - billion);
+						chooseTimeSec += 1;
+					}
+
 				}
 			}
 
+			
 			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1)) {
 				perror("\n\nFailed to receive message from child\n");
 				exit(1);
+			//If a process sent a message
 			} else if(messageReceived = 0) {
 				messageReceivedBool = true;
 				resourceRequest = message.resource;
 				processChoice = message.choice;
+				for(i = 0; i < 18; i++) {
+					if(processTable[i].pid == currentPid) {
+						currentProcess = processTable[i];
+						break;
+					} 	
+				}
 			} else
 				messageReceivedBool = false;
 
@@ -247,13 +271,7 @@ int main(int argc, char **argv) {
 			//If process is requesting a resource
 			if(messageReceivedBool == true && processChoice == 1) {
 				currentPid = message.pid;
-				for(i = 0; i < 18; i++) {
-					if(processTable[i].pid == currentPid) {
-						currentProcess = processTable[i];
-						break;
-					} 	
-				}
-
+				
 				//Increasing the number of requests for that resource
 				resourceRequests[resourceRequest] += 1;
 				if(availableResources[resourceRequest] > 0) {
@@ -261,9 +279,10 @@ int main(int argc, char **argv) {
 					availableResources[resourceRequest] -= 1;
 					resourceRequests[resourceRequest] -= 1;
 
+
 					grantedInstantly++;
 					
-					//Sending message back to child that request was granted
+					//Sending message back to child the good news that their request was granted
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 						perror("\n\nmsgsend to child failed\n\n");
 						exit(1);
@@ -275,16 +294,93 @@ int main(int argc, char **argv) {
 					//process gets blocked and requested resource gets set for future granting
 					blocked++;
 					currentProcess.requestedResource = resourceRequest;
-					
-					//putting process in blocked queue
-					Enqueue(currentProcess);
 				}
 
 
 			}  //If process is releasing a resource
-		       	else if(messageReceivedBool == true) {
+		       	else if(messageReceivedBool == true && processChoice == 2) {
+				int resource = resourceRequest;
+				//Increasing the number of available instances of this resource, decreasing amount the process has 
+				availableResources[resourceRequest] += 1;
+				currentProcess.currentResources[resourceRequest] -= 1;
 
+				//If any processes are blocked and waiting on a resource
+				if(blocked > 0) {
+					//Decrease number of requests for this resource instance since it's about to be granted
+					resourceRequests[resource] -= 1;
+
+					//For each process, if they need the resource just released, give it to them
+					for(i = 0; i < 18; i++) {
+						if(processTable[i].requestedResource = resource) {
+							currentProcess = processTable[i];
+							break;
+					}
+
+					//Tell lucky process their wish is granted
+					message.mtype = currentProcess.pid;
+					message.intData = currentProcess.pid;
+					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+						perror("\n\nmsgsend to child failed");
+						exit(1);
+					}
+
+					//decrease the process's requests, decrease available resources, and decrease number of blocked processes
+					currentProcess.resourceRequest = -1;
+					availableResources[resource] -= 1;
+					blocked--;
+				}
+			//If a message was received and the process is terminating 
+			} else if(messageReceivedBool == true && processChoice == 3) {
+				//Reset PCB table entries for this process
+				currentPid = message.pid;
+				currentProcess.occupied = 0;
+				currentProcess.pid = 0;
+				
+				//If there are any blocked processes waiting on a resource
+				if(blocked > 0) {
+					//For each of the 10 resource types
+					for(i = 0; i < 10; i++) {
+						//If the terminating process has any of that resource
+						if(currentProcess.currentResources[i] > 0) {
+							int count = currentProcess.currentResources[i];
+							
+							//For each instance of that resource the process has
+							for(i = 0; i < count; i++) {
+								availableResources[i] += 1;
+								
+								//For each process that might need that resource
+								for(j = 0; j < 18; j++) {
+									//If the currently tested process needs that resource
+									if(processTable[j].requestedResource = resource) {
+
+										//Send process the message that they're finally getting the resource
+										message.mtype = processTable[j].pid;
+										message.intData = processTable[j].pid;
+										if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+											perror("\n\nmsgsend to child failed");
+											exit(1);
+										}
+										
+										//Decrease the available instances of that resource, the requests for it, and the process's request 
+										processTable[j].resourceRequest = -1;
+										availableResources[i] -= 1;
+										resourceRequests[i] -= 1;
+										//Remove one blocked processs since it got its required resource
+										blocked--;	
+										break;
+									}
+								}
+							}
+						}
+					}
+				}
+
+				//Decreasing simul workers
+				simulWorkers--;
 			}
+
+			//every second do deadlock detection
+			//do printing of table
 
 
 			incrementClock(5000);
@@ -380,204 +476,7 @@ void incrementClock(int nanoIncrement) {
 
 
 
-/*void runProcess(int processType) {
-	//Shared memory attachment
-	int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
-	if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
-		fprintf(stderr, "Shared memory get failed\n");
-		exit(1);
-	}
-
-
-	//Initializing shared memory for nano seconds
-	int nano_id = shmget(nano_key, sizeof(int) * 10, IPC_CREAT | 0666);
-	if(nano_id <= 0) {
-		fprintf(stderr, "Shared memory for nanoseconds failed\n");
-		exit(1);
-	}
-
-
-	const int *sec_ptr = (int *) shmat(sec_id, 0, 0);      //Pointer to shared memory address
-	if(sec_ptr <= 0) {                               //Testing if pointer is actually working
-		fprintf(stderr, "Shared memory attach failed\n");
-		exit(1);
-	}
-
-
-	const int *nano_ptr = (int *) shmat(nano_id, 0, 0);
-	if(nano_ptr <= 0) {
-		fprintf(stderr, "Shared memory attachment for nanoseconds failed\n");
-		exit(1);
-	}
-
-
-	//Setting seconds and nanoseconds to initial values
-	int * seconds = (int *)(sec_ptr);
-
-	int * nanoSeconds = (int *)(nano_ptr);
-
-	//Message queue setup
-	if((key = ftok("msgq.txt", 'B')) == -1) {
-		perror("ftok");
-			exit(1);
-	}
-
-	if((msqid = msgget(key, PERMS | IPC_CREAT)) == -1) {
-		perror("msgget");
-		exit(1);
-	}
-
-	message.mtype = 1;
-	message.timeQuantum = 200000;   //Time quantum of 200,000 ns
-	int quantum = message.timeQuantum;
-
-
-
-	//Geting process at front of queue
-	struct PCB currentProcess = Front(processType);
-
-	//Removing it from queue
-	Dequeue(processType);
-
-	//Ensuring there is an actual process to run
-	if(currentProcess.actualPid != 0) {
-		if(fileLines < fileLineMax) {
-			fprintf(logFile, "%d: Dispatching process: %d from queue %d at time %d:%d\n", fileLines, currentProcess.actualPid, processType, *seconds, *nanoSeconds);
-			fileLines++;
-		}
-
-		int processPid = currentProcess.actualPid;
-		message.mtype = processPid;
-		message.intData = processPid;
-
-		//converting current time from 2 ints into 1 double
-		sprintf(secondsString, "%d", *seconds);
-		sprintf(nanoSecondsString, "%d", *nanoSeconds);
-		strcat(secondsString, nanoSecondsString);
-
-		//If it's a blocked process but its still blocked by something
-		if(processType == 2) {
-			if(currentProcess.blockedSeconds < *seconds && currentProcess.blockedNanoSecs < *nanoSeconds) {
-				Enqueue(currentProcess, processType);
-				incrementClock(nanoIncrement);
-				EXIT_SUCCESS;
-			}
-			//Process's blocked time += the current clock time - when it last ran
-			currentProcess.blockedTime += (atof(secondsString) - currentProcess.lastTimeRan);
-		}
-
-		
-		//Sending message with time quantum to child
-		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
-			perror("\n\nmsgsnd to child failed\n\n");
-			printf(": %d", currentProcess.actualPid);
-			exit(1);
-		}
-
-
-		//Receving message from child
-		if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
-			perror("\n\nFailed to receive message from child\n");
-			exit(1);
-		}
-
-		//Getting the time quantum the child sent back/used
-		int childsOutput = received.timeQuantum;
-		int dispatchTime = 0;
-
-		if(childsOutput == quantum) {                                             //Child used time quantum
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Receiving that process %d ran for %d nanoseconds, using its whole time quantum\n", fileLines, currentProcess.actualPid,
-					       	childsOutput);
-				fileLines++;
-			}
-			//Adding quantum used to process's cpuTime Used and blockedTime
-			currentProcess.cpuTimeUsed += childsOutput;
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Putting process %d into ready queue\n", fileLines, currentProcess.actualPid);
-				fileLines++;
-			}
-
-			//Putting process in ready queue
-			Enqueue(currentProcess, 1);
-			incrementClock(nanoIncrement + childsOutput);
-
-			dispatchTime = (nanoIncrement + childsOutput);
-		
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Total time spent in dispatch was %d nanoseconds\n", fileLines, dispatchTime);
-				fileLines++;
-			}
-
-		} else if(childsOutput < 0) {                                //Child got blocked
-			childsOutput = (0 - childsOutput);
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Receiving that process %d ran for %d nanoseconds, not using its whole time quantum\n", fileLines, currentProcess.actualPid, 
-						childsOutput);
-				fileLines++;
-			}
-
-			
-			//Putting process in blocked queue
-			Enqueue(currentProcess, 2);
-
-			//Setting the last time ran to current time for when it becomes unblocked
-			currentProcess.lastTimeRan = atof(secondsString);
-			incrementClock(9000000 + childsOutput);
-
-			dispatchTime = (9000000 + childsOutput);
-		
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Total time spent in dispatch was %d nanoseconds\n", fileLines, dispatchTime);
-				fileLines++;
-			}
-
-		} else {                                                                  //Child terminated
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "%d: Receiving that process %d ran for %d nanoseconds, not using its whole time quantum and terminating\n", fileLines, 
-						currentProcess.actualPid, childsOutput);
-				fileLines++;
-			}
-
-			dispatchTime = (nanoIncrement + childsOutput);
-
-			currentProcess.cpuTimeUsed += childsOutput;
-			//Calculate cpu time and clear the PCB table of this process
-			currentProcess.timeRan = ((atof(secondsString) - currentProcess.startTime) / billion);
-			currentProcess.cpuTimeUsed = (currentProcess.cpuTimeUsed / billion);
-
-			//Adding to the stats for the end
-			totalCpu += (currentProcess.cpuTimeUsed  / currentProcess.timeRan) * 100;
-			totalWait += ((currentProcess.timeRan - currentProcess.cpuTimeUsed) / billion);
-			totalBlockedTime += (currentProcess.blockedTime / billion);
-
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "\n%d: Clearing process %d's PCB block after termination\n", fileLines, currentProcess.actualPid);
-				fileLines++;
-			}
-
-
-			//Emptying the current process's table slot
-			currentProcess.occupied = 0;
-			currentProcess.actualPid = 0;
-			currentProcess.cpuTimeUsed = 0;
-			currentProcess.timeRan = 0;
-			currentProcess.blockedTime = 0;
-
-			simulWorkers--;
-
-			incrementClock(nanoIncrement + childsOutput);
-			if(fileLines < fileLineMax) {
-				fprintf(logFile, "\n%d: Total time spent in dispatch was %d nanoseconds\n", fileLines, dispatchTime);
-				fileLines++;
-			}
-		}
-
-	}
-}*/
-
-
-//Queues
+/*//Queues
 struct PCB blockedQueue[max_processes];
 
 //Queue function pointers
@@ -636,7 +535,7 @@ struct PCB Front() {
 		exit(1);
 	}
 	return blockedQueue[blockedFront];
-}
+}*/
 
 
 
