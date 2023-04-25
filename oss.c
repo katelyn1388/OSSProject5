@@ -60,10 +60,11 @@ struct PCB process;
 
 //Function prototypes
 int help();
+void terminateProcess(struct PCB process);
 static void myhandler(int s);
 static int setupinterrupt();
 static int setupitimer();
-bool deadlock(int available[], int max[][10], int allocation[][10], int numberOfProcesses, int numberOfResources);
+bool deadlock();
 
 
 //global variables
@@ -80,6 +81,7 @@ int availableResources[10] = {totalResources, totalResources, totalResources, to
 int allocatedResources[18][10] = {{ 0 }};
 int resourceRequests[10] = { 0 };
 int resourceReleases[10] = { 0 };
+int deadlockedProcesses[18] = { 0 };
 
 
 int main(int argc, char **argv) {
@@ -235,6 +237,19 @@ int main(int argc, char **argv) {
 					//Forking child
 					tempPid = fork();
 
+					
+					//Setting new random time for next process creation
+					randomTime = rand() % maxNewNano;
+					chooseTimeNano = *seconds, chooseTimeSec = *seconds;
+					if((*nanoSeconds + randomTime) < billion)
+						chooseTimeNano += randomTime;
+					else
+					{
+						chooseTimeNano = ((*seconds + randomTime) - billion);
+						chooseTimeSec += 1;
+					}
+
+
 					//Filling out process table for child process
 					currentProcess.occupied = 1;
 					currentProcess.pid = tempPid;
@@ -248,26 +263,15 @@ int main(int argc, char **argv) {
 						printf("Fork failed");
 					else if(tempPid == 0) {
 						printf("execing a child");
-						if(execlp(args[0], args[0], NULL) == -1) {
-							printf("Exec failed, terminating");
-							exit(1);
-						}
-						return 0;
+						execlp(args[0], args[0], NULL); 
+						printf("Exec failed, terminating");
+						exit(1);
 					}
+
+					printf("\nAfter exec call\n\n");
 
 					simulWorkers++;
 					totalWorkers++;
-
-					//Setting new random time for next process creation
-					randomTime = rand() % maxNewNano;
-					chooseTimeNano = *seconds, chooseTimeSec = *seconds;
-					if((*nanoSeconds + randomTime) < billion)
-						chooseTimeNano += randomTime;
-					else
-					{
-						chooseTimeNano = ((*seconds + randomTime) - billion);
-						chooseTimeSec += 1;
-					}
 
 				}
 			}
@@ -443,9 +447,15 @@ int main(int argc, char **argv) {
 				bool deadlockFound = true;
 
 				while(deadlockFound) {
-					deadlockFound = deadlock(maxResources, maxResources, allocatedResources, simulWorkers, 10);
+					deadlockFound = deadlock();
 					if(deadlockFound) {
-						//Terminate processes involved 
+						for(i = 0; i < 18; i++) {
+							//Terminate processes involved 
+							if(deadlockedProcesses[i] == 1) {
+								terminateProcess(processTable[i]);
+							}
+
+						}
 					}
 				}
 			}
@@ -505,6 +515,14 @@ int help() {
 	exit(1);
 }
 
+
+void terminateProcess(struct PCB process) {
+	printf("In terminate process function, still empty though");
+
+	//Connect to message queue
+	//do rest of terminate stuff from above
+
+}
 
 
 
@@ -578,45 +596,47 @@ static int setupitimer(void) {
 
 
 
-bool deadlock(int available[], int max[18][10],  int allocation[18][10], int numberOfProcesses, int numberOfResources) {
+bool deadlock() {
 	int i, j;
-	int work[numberOfResources];
-	int finish[numberOfResources];
-	int need[numberOfProcesses][numberOfResources];
+	int work[10];
+	int finish[10];
+	int need[18][10];
 	int numFinished = 0;
+	//int deadlockedProcesses[numberOfProcesses];
 
 	//Initializing work, finish, and need arrays
-	for(i = 0; i < numberOfResources; i++) {
-		work[i] = available[i];
+	for(i = 0; i < 10; i++) {
+		work[i] = availableResources[i];
 	}
 
-	for(i = 0; i < numberOfProcesses; i++) {
+	for(i = 0; i < 18; i++) {
 		finish[i] = 0;
 	}
 
-	for(i = 0; i < numberOfProcesses; i++) {
-		for(j = 0; j < numberOfResources; j++) {
-			need[i][j] = max[i][j] - allocation[i][j];
+	for(i = 0; i < 18; i++) {
+		for(j = 0; j < 10; j++) {
+			need[i][j] = maxResources[i][j] - allocatedResources[i][j];
 		}
 	}
 
 	//Need matrix calculation
-	while(numFinished < numberOfProcesses) {
+	while(numFinished < 18) {
 		int found = 0;
-		for(i = 0; i < numberOfProcesses; i++) {
+		for(i = 0; i < 18; i++) {
 			if(!finish[i]) {
 				int canFinish = 1;
-				for(j = 0; j < numberOfResources; j++) {
+				for(j = 0; j < 10; j++) {
 					if(need[i][j] > work[j]) {
 						canFinish = 0;
 						break;
 					}
 				}
 				if(canFinish) {
-					for(j = 0; j < numberOfResources; j++) {
-						work[j] += allocation[i][j];
+					for(j = 0; j < 10; j++) {
+						work[j] += allocatedResources[i][j];
 					}
 					finish[i] = 1;
+					deadlockedProcesses[i] = 1;
 					numFinished++;
 					found = 1;
 				}
