@@ -31,6 +31,8 @@ int main(int argc, char** iterations) {
 	key_t key;
 	message.mtype = getpid();
 
+	int currentResources[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 	//Making sure message queue works	
 	if((key = ftok("msgq.txt", 'B')) == -1) {
 		perror("ftok");
@@ -85,11 +87,13 @@ int main(int argc, char** iterations) {
 	int starterSec = *sharedSeconds + 1;
 
 
+	printf("Worker started");
+
 	//Random number generator
 	srand(getpid());
-	bool terminated = false, firstTime = true;
+	bool terminated = false, chosen = false;
 	int randTimeMax = 250000000, billion = 1000000000;
-	int task;
+	int task, randomResource;
 
 	//First random time to termiante, request resources, or release
 	int randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;
@@ -102,11 +106,7 @@ int main(int argc, char** iterations) {
 		chooseTimeSec += 1;
 	}
 
-	//Setting message queue variables to send back to parent
-	message.intData = getppid();
-	message.mtype = getppid();
-	message.pid = getpid();
-
+	
 	//Do nothing before at least 1 second has passed
 	while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
 
@@ -114,6 +114,12 @@ int main(int argc, char** iterations) {
 
 
 	while(!terminated) {
+		//Setting message queue variables to send back to parent
+		message.intData = getppid();
+		message.mtype = getppid();
+		message.pid = getpid();
+		chosen = false;
+
 
 		//Random number to choose to terminate, request, or release
 		if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
@@ -121,21 +127,56 @@ int main(int argc, char** iterations) {
 
 			if(task == 0) {
 				terminated = true;
-				//send message to parent that they're terminating and releasing all resources
+				message.choice = 3;
 
+				//send message to parent that they're terminating and releasing all resources
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+					perror("msgsend to parent failed");
+					exit(1);
+				}
+			//Process is choosing to request a resource
 			} else if(task >= 1 && task <= 95) {
-				message.resource = (rand() % (10 - 1 + 1)) + 1;
+				message.resource = (rand() % (10 - 0 + 1)) + 0;
+				message.choice = 1;
+				printf("Selected resource: %d", message.resource);
 				//Pick a random resource, send to parent the request
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+					perror("msgsend to parent failed");
+					exit(1);
+				}
+
+				message.mtype = 1;
+				if(msgrcv(msqid, &message, sizeof(message), getpid(), 0) == -1) {
+					perror("msgrcv from parent failed");
+					exit(1);
+				}
+
+				int receivedResource = message.resource;
+				currentResources[receivedResource] += 1;
+
+
+			//Process is releasing a resource
+			} else {
+				message.choice = 2;
+				while(!chosen) {
+					randomResource = (rand() % (10 - 0 + 1)) + 0;
+					if(currentResources[randomResource] > 0) {
+						message.resource = randomResource;
+						currentResources[randomResource] -= 1;
+						chosen = true;
+					}
+				}
+				
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+					perror("msgsend to parent failed");
+					exit(1);
+				}
 
 			}
 
-
-
-			//Wait receive to see if resource was granted
 		}
 		
 	}
-
 
 	return 0;
 

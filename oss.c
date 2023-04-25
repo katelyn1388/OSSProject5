@@ -88,7 +88,7 @@ int resourceReleases[10] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool doneRunning = false, fileGiven = false, messageReceivedBool = false;
+	bool fileGiven = false, messageReceivedBool = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
 		time_t startTime, endTime;
 		startTime = time(NULL);
 		endTime = startTime + 5;
-
+		
 		//Max second and nanosecond for random creation time
 		int maxNewNano = 500000000;
 	
@@ -203,9 +203,9 @@ int main(int argc, char **argv) {
 		}
 
 
-
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while((totalWorkers < 40) && (time(NULL) > endTime)) {
+			printf("Starting loop");
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if(simulWorkers < 18) {
@@ -216,6 +216,7 @@ int main(int argc, char **argv) {
 						}
 					}
 
+					printf("Forking a child");
 					//Forking child
 					tempPid = fork();
 
@@ -254,7 +255,7 @@ int main(int argc, char **argv) {
 				perror("\n\nFailed to receive message from child\n");
 				exit(1);
 			//If a process sent a message
-			} else if(messageReceived = 0) {
+			} else if(messageReceived == 0) {
 				messageReceivedBool = true;
 				resourceRequest = message.resource;
 				processChoice = message.choice;
@@ -311,7 +312,7 @@ int main(int argc, char **argv) {
 
 					//For each process, if they need the resource just released, give it to them
 					for(i = 0; i < 18; i++) {
-						if(processTable[i].requestedResource = resource) {
+						if(processTable[i].requestedResource == resource) {
 							currentProcess = processTable[i];
 							break;
 						}
@@ -353,7 +354,7 @@ int main(int argc, char **argv) {
 								//For each process that might need that resource
 								for(j = 0; j < 18; j++) {
 									//If the currently tested process needs that resource
-									if(processTable[j].requestedResource = resourceRequest) {
+									if(processTable[j].requestedResource == resourceRequest) {
 
 										//Send process the message that they're finally getting the resource
 										message.mtype = processTable[j].pid;
