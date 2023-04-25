@@ -69,7 +69,7 @@ bool deadlock();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 50000, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 2500, grantedRequests = 0, deadlockTime = 1;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -216,23 +216,20 @@ int main(int argc, char **argv) {
 			chooseTimeSec += 1;
 		}
 
-		printf("\n\nRight before loop");
+		printf("\n\nRight before loop, parent pid is: %d", getpid());
 
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while(!doneRunning) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if((simulWorkers < 18) && !doneCreating) {
-					printf("\nCreating child\n");
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
-							printf("Checking if empty");
 							currentProcess = processTable[i];
 							break;
 						}
 					}
 
-					printf("\nForking a child");
 
 					//Forking child
 					tempPid = fork();
@@ -259,14 +256,15 @@ int main(int argc, char **argv) {
 					printf("Creating a child - after fork");
 
 					//Execing child off
-					if(tempPid < 0) 
-						printf("Fork failed");
-					else if(tempPid == 0) {
-						printf("execing a child");
-						execlp(args[0], args[0], NULL); 
+					if(tempPid < 0) { 
+						perror("fork");
+					} else if(tempPid == 0) {
+						printf("execing a child: %d", getpid());
+						execlp(args[0], args[0], args[1]); 
 						printf("Exec failed, terminating");
 						exit(1);
-					}
+					} else
+						printf("\n\nShould be printed once, my pid is: %d\n\n", getpid());
 
 					printf("\nAfter exec call\n\n");
 
@@ -283,29 +281,17 @@ int main(int argc, char **argv) {
 
 			received.pid = 0;
 
-			/*if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) == -1) {
-				perror("\n\nFailed to receive message from child\n");
-				exit(1);
-			//If a process sent a message
-			} else if(messageReceived == 0) {
-				messageReceivedBool = true;
-				resourceRequest = message.resource;
-				processChoice = message.choice;
-				for(i = 0; i < 18; i++) {
-					if(processTable[i].pid == currentPid) {
-						currentProcess = processTable[i];
-						break;
-					} 	
-				}
-			} else
-				messageReceivedBool = false;*/
-
-			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
-				//perror("\n\nFailed to receive message from child\n");
-				//exit(1);
-			} 
 			
-			if(received.pid != 0) {
+			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
+				if(errno == ENOMSG) {
+					//printf("No message received");
+					messageReceivedBool = false;
+				} else {
+					perror("\n\nFailed to receive message from child\n");
+					exit(1);
+				}
+			} else {
+				printf("Message received from: %d", received.pid);
 				messageReceivedBool = true;
 				resourceRequest = received.resource;
 				processChoice = received.choice;
@@ -315,8 +301,7 @@ int main(int argc, char **argv) {
 						break;
 					} 	
 				}
-			} else
-				messageReceivedBool = false;
+			}
 
 
 

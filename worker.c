@@ -91,7 +91,7 @@ int main(int argc, char** iterations) {
 
 	//Random number generator
 	srand(getpid());
-	bool terminated = false, chosen = false;
+	bool terminated = false, chosen = false, enough = true;
 	int randTimeMax = 250000000, billion = 1000000000;
 	int task, randomResource;
 
@@ -108,7 +108,7 @@ int main(int argc, char** iterations) {
 
 	
 	//Do nothing before at least 1 second has passed
-	//while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
+	while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
 
 
 
@@ -124,6 +124,7 @@ int main(int argc, char** iterations) {
 		//Random number to choose to terminate, request, or release
 		if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
 			task = (rand() % (100 - 0 + 1)) + 0;
+			chosen = false;
 
 			if(task == 0) {
 				terminated = true;
@@ -136,7 +137,14 @@ int main(int argc, char** iterations) {
 				}
 			//Process is choosing to request a resource
 			} else if(task >= 1 && task <= 95) {
-				message.resource = (rand() % (10 - 0 + 1)) + 0;
+				do {
+
+					message.resource = (rand() % (10 - 0 + 1)) + 0;
+					if(currentResources[message.resource] >= 20) 
+						enough = false;
+					else
+						enough = true;
+				}while(!enough);
 				message.choice = 1;
 				printf("Selected resource: %d", message.resource);
 				//Pick a random resource, send to parent the request
