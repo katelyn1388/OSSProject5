@@ -27,9 +27,13 @@ struct my_msgbuf {
 
 int main(int argc, char** iterations) {
 	struct my_msgbuf message;
+	struct my_msgbuf received;
 	int msqid;
 	key_t key;
-	message.mtype = getpid();
+	message.mtype = getppid();
+	message.intData = getppid();
+	received.mtype = 1;
+	message.pid = getpid();
 
 	int currentResources[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -115,9 +119,6 @@ int main(int argc, char** iterations) {
 
 	while(!terminated) {
 		//Setting message queue variables to send back to parent
-		message.intData = getppid();
-		message.mtype = getppid();
-		message.pid = getpid();
 		chosen = false;
 
 
@@ -131,7 +132,7 @@ int main(int argc, char** iterations) {
 				message.choice = 3;
 
 				//send message to parent that they're terminating and releasing all resources
-				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), IPC_NOWAIT) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
@@ -148,13 +149,12 @@ int main(int argc, char** iterations) {
 				message.choice = 1;
 				printf("Selected resource: %d", message.resource);
 				//Pick a random resource, send to parent the request
-				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), IPC_NOWAIT) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
 
-				message.mtype = 1;
-				if(msgrcv(msqid, &message, sizeof(message), getpid(), 0) == -1) {
+				if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
 					perror("msgrcv from parent failed");
 					exit(1);
 				}
@@ -175,7 +175,7 @@ int main(int argc, char** iterations) {
 					}
 				}
 				
-				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), IPC_NOWAIT) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
