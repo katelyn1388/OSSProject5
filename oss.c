@@ -88,7 +88,7 @@ int resourceReleases[10] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool fileGiven = false, messageReceivedBool = false;
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -202,13 +202,13 @@ int main(int argc, char **argv) {
 			chooseTimeSec += 1;
 		}
 
+		printf("\n\nRight before loop");
 
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
-		while((totalWorkers < 40) && (time(NULL) > endTime)) {
-			printf("Starting loop");
+		while(!doneRunning) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
-				if(simulWorkers < 18) {
+				if((simulWorkers < 18) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
 							currentProcess = processTable[i];
@@ -228,7 +228,8 @@ int main(int argc, char **argv) {
 
 					//Execing child off
 					if(tempPid == 0) {
-						execlp(args[0], args[0], args[1]);
+						printf("execing a child");
+						execlp(args[0], args[0], NULL);
 						printf(stderr, "Exec failed, terminating");
 						exit(1);
 					}
@@ -250,8 +251,11 @@ int main(int argc, char **argv) {
 				}
 			}
 
+			if(totalWorkers > 40 || time(NULL) > endTime) 
+				doneCreating = true;
+
 			
-			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1)) {
+			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) == -1) {
 				perror("\n\nFailed to receive message from child\n");
 				exit(1);
 			//If a process sent a message
@@ -358,7 +362,7 @@ int main(int argc, char **argv) {
 
 										//Send process the message that they're finally getting the resource
 										message.mtype = processTable[j].pid;
-										message.intData = processTable[j].pid;
+										//message.intData = processTable[j].pid;
 										if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 											perror("\n\nmsgsend to child failed");
 											exit(1);
@@ -382,6 +386,8 @@ int main(int argc, char **argv) {
 				simulWorkers--;
 			}
 
+			if(doneCreating && simulWorkers == 0) 
+				doneRunning = true;
 			//every second do deadlock detection
 			//do printing of table
 
