@@ -50,7 +50,6 @@ struct PCB {
 	pid_t pid;
 	int currentResources[10];
 	int requestedResource;
-	
 };
 
 //Process table
@@ -60,22 +59,15 @@ struct PCB process;
 
 
 //Function prototypes
-void incrementClock();
-void runProcess(int processType);
 int help();
 static void myhandler(int s);
 static int setupinterrupt();
 static int setupitimer();
-bool isEmpty(int processType);
-bool isFull(int processType);
-void Enqueue(struct PCB process, int processType);
-void Dequeue(int processType);
-struct PCB Front(int processType);
 
 
 //global variables
-int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, nanoIncrement = 50000000, c, fileLines = 1, fileLineMax = 9995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j;
+int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 50000, grantedRequests = 0;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -88,15 +80,18 @@ int resourceReleases[10] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
+	bool fileGiven = false, verboseOn = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
-	while((c = getopt(argc, argv, "hf:")) != -1) {
+	while((c = getopt(argc, argv, "hvf:")) != -1) {
 		switch(c)
 		{
 			case 'h':
 				help();
+			case 'v':
+				verboseOn = true;
+				break;
 			case 'f':
 				userFile = optarg;
 				fileGiven = true;
@@ -181,6 +176,13 @@ int main(int argc, char **argv) {
 
 		message.mtype = 1;
 
+		//Process table initial values
+		for(i = 0; i < 18; i++) {
+			processTable[i].occupied = 0;
+			processTable[i].requestedResource = -1;
+		}
+
+
 
 		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
 		time_t startTime, endTime;
@@ -209,14 +211,17 @@ int main(int argc, char **argv) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
 				if((simulWorkers < 18) && !doneCreating) {
+					printf("\nCreating child\n");
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
+							printf("Checking if empty");
 							currentProcess = processTable[i];
 							break;
 						}
 					}
 
-					printf("Forking a child");
+					printf("\nForking a child");
+
 					//Forking child
 					tempPid = fork();
 
@@ -226,12 +231,18 @@ int main(int argc, char **argv) {
 
 					char* args[] = {"./worker", 0};
 
+					printf("Creating a child - after fork");
+
 					//Execing child off
-					if(tempPid == 0) {
+					if(tempPid < 0) 
+						printf("Fork failed");
+					else if(tempPid == 0) {
 						printf("execing a child");
-						execlp(args[0], args[0], NULL);
-						printf(stderr, "Exec failed, terminating");
-						exit(1);
+						if(execlp(args[0], args[0], NULL) == -1) {
+							printf(stderr, "Exec failed, terminating");
+							exit(1);
+						}
+						return 0;
 					}
 
 					simulWorkers++;
@@ -286,6 +297,26 @@ int main(int argc, char **argv) {
 
 
 					grantedInstantly++;
+					grantedRequests++;
+
+					if(grantedRequests % 20 == 0 && verboseOn) {
+						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
+						for(i = 0; i < totalWorkers; i++) {
+							fprintf(logFile, "\nP%d:", processTable[i]);
+							for(j = 0; j < 10; j++) {     
+								fprintf(logFile, "%d    ", processTable[i].currentResources[j]); 
+							}
+						}
+					
+						printf("\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
+						for(i = 0; i < totalWorkers; i++) {
+							printf("\nP%d:", processTable[i]);
+							for(j = 0; j < 10; j++) {     
+								printf("%d    ", processTable[i].currentResources[j]);
+							}
+						}
+
+					}
 					
 					//Sending message back to child the good news that their request was granted
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
@@ -392,7 +423,14 @@ int main(int argc, char **argv) {
 			//do printing of table
 
 
-			incrementClock(5000);
+			//incrementClock(5000);
+			if((*nanoSeconds + nanoIncrement) < billion)
+				*nanoSeconds += nanoIncrement;
+			else
+			{
+				*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
+				*seconds += 1;
+			}
 
 		}
 
@@ -430,6 +468,7 @@ int help() {
 	printf("\nThe program will terminate after either 40 processes have been launched or 5 real life seconds have passed");
 	printf("\n\nInput Options:");
 	printf("\n-h     output a short description of the project and how to run it");
+	printf("\n-v     turns verbose mode on, so the logfile will show all oss actions. Verbose off only shows the output of deadlock detection");
 	printf("\n-f     the name of the file for output to be logged in");
 	printf("\n\nInput example:");
 	printf("\n./oss -f logfile.txt");
@@ -438,113 +477,6 @@ int help() {
 	exit(1);
 }
 
-
-void incrementClock(int nanoIncrement) {
-	int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
-	if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
-		fprintf(stderr, "Shared memory get failed\n");
-		exit(1);
-	}
-
-
-	//Initializing shared memory for nano seconds
-	int nano_id = shmget(nano_key, sizeof(int) * 10, IPC_CREAT | 0666);
-	if(nano_id <= 0) {
-		fprintf(stderr, "Shared memory for nanoseconds failed\n");
-		exit(1);
-	}
-
-
-	const int *sec_ptr = (int *) shmat(sec_id, 0, 0);      //Pointer to shared memory address
-	if(sec_ptr <= 0) {                               //Testing if pointer is actually working
-		fprintf(stderr, "Shared memory attach failed\n");
-		exit(1);
-	}
-
-
-	const int *nano_ptr = (int *) shmat(nano_id, 0, 0);
-	if(nano_ptr <= 0) {
-		fprintf(stderr, "Shared memory attachment for nanoseconds failed\n");
-		exit(1);
-	}
-
-
-	//Setting seconds and nanoseconds to initial values
-	int * seconds = (int *)(sec_ptr);
-
-	int * nanoSeconds = (int *)(nano_ptr);
-
-	if((*nanoSeconds + nanoIncrement) < billion)
-		*nanoSeconds += nanoIncrement;
-	else
-	{
-		*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
-		*seconds += 1;
-	}
-}
-
-
-
-/*//Queues
-struct PCB blockedQueue[max_processes];
-
-//Queue function pointers
-int blockedFront = -1;
-int blockedRear = -1;
-
-
-
-bool isEmpty() {
-	return(blockedFront == -1 && blockedRear == -1);
-}
-
-
-bool isFull() {
-	if((blockedRear + 1) + blockedFront == max_processes) 
-		return true;
-
-	return false;
-}
-
-
-//Adding process to queue
-void Enqueue(struct PCB process) {
-	if(isFull()) 
-		return;
-		
-	if(isEmpty()) 
-		blockedFront = blockedRear = 0;
-	else {
-		blockedRear += 1;
-		if(blockedRear == max_processes) 
-			blockedRear = blockedRear % max_processes;
-	}
-
-	blockedQueue[blockedRear] = process;
-	
-}
-
-//Removing process from queue
-void Dequeue() {
-	if(isEmpty()) {
-		printf("\n\nError: Blocked queue is empty\n\n");
-		return;
-	} else if(blockedFront == blockedRear)
-		blockedRear = blockedFront = -1;
-	else {
-		blockedFront += 1;
-		if(blockedFront == max_processes)
-			blockedFront = blockedFront % max_processes;
-	}
-}
-
-struct PCB Front() {
-	if(blockedRear == -1) {
-		printf("\n\nError: Cannot return front of empty queue: blocked\n\n");
-		exit(1);
-	}
-	return blockedQueue[blockedFront];
-}*/
 
 
 

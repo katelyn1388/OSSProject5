@@ -1,0 +1,32 @@
+#Katelyn Bowers
+#Project 5
+#April 25, 2023
+
+##Usage
+This program simulates an operating system with a simulated clock that forks off a number of children and grants or blocks their requests for resources. There are 10 resource types, 
+each with 20 instances, for a toal of 200 resources.  Each child process will run and select to either request a resource, release a resource it already has, or terminate. 
+If the process is requesting a resource that oss doesn't have enough of, oss will put that process in a blocked queue and make it wait for that resource to become available. 
+At that point oss will send a message back to the child to let it know it got the resource and can continue running.
+
+Every simulated second oss runs a deadlock detection algorithm to see if there are any deadlocks and if so, terminate the involved processes til it's no longer deadlocked
+
+This program also creates a default logfile or uses the user provided name to make one that logs either all oss decisions and actions (verbose on) or just when deadlock detection
+is performed.
+
+This program continues making new processes until 40 have been created or 5 real life seconds have passed. It does not allow more than 18 to run simultaneously, however.
+
+To begin using this program, use the makefile by running the command: make -f Makefile
+
+To clean the directory adter running use: make clean
+This will also clean up the logfile if it ends with .txt
+
+##Input 
+An example of valid input:
+./oss -f logfile.txt -v or ./oss -h
+The first input example would run the program and output all actions (verbose on) to logfile.txt
+The second example would just run the help function for the program which describes how to use the program
+
+If no parameters are provided, verbose will be turned off by default and logfile.txt will be used for the logfile
+
+##Version Control
+Git was used for the version control of this project

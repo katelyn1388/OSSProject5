@@ -87,7 +87,7 @@ int main(int argc, char** iterations) {
 	int starterSec = *sharedSeconds + 1;
 
 
-	printf("Worker started");
+	printf("\n\n\nWorker started\n\n\n");
 
 	//Random number generator
 	srand(getpid());
