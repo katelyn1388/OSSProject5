@@ -188,11 +188,11 @@ int main(int argc, char **argv) {
 		}
 
 		//initializing max request table for each process
-		/*for(i = 0; i < 18; i++) {
-			for(j = 0; i < 10; j++) {
+		for(i = 0; i < 18; i++) {
+			for(j = 0; j < 10; j++) {
 				maxResources[i][j] = 10;
 			}
-		}*/
+		}
 
 
 
@@ -301,9 +301,8 @@ int main(int argc, char **argv) {
 				messageReceivedBool = false;*/
 
 			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
-				perror("\n\nFailed to receive message from child\n");
+				//perror("\n\nFailed to receive message from child\n");
 				//exit(1);
-			//If a process sent a message
 			} 
 			
 			if(received.pid != 0) {
