@@ -74,7 +74,7 @@ struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
 key_t key;
-int maxResources[18][10];
+int maxResources[18][10] = {{ 0 }};
 int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources };
 int allocatedResources[18][10] = {{ 0 }};
 int resourceRequests[10] = { 0 };
