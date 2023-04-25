@@ -63,6 +63,7 @@ int help();
 static void myhandler(int s);
 static int setupinterrupt();
 static int setupitimer();
+bool deadlock(int available[], int max[][10], int allocation[][10], int numberOfProcesses, int numberOfResources);
 
 
 //global variables
@@ -545,4 +546,58 @@ static int setupitimer(void) {
 	value.it_interval.tv_usec = 0;
 	value.it_value = value.it_interval;
 	return (setitimer(ITIMER_PROF, &value, NULL));
+}
+
+
+
+
+bool deadlock(int available[], int max[][10],  int allocation[][10], int numberOfProcesses, int numberOfResources) {
+	int i, j, k;
+	int work[numberOfResources];
+	int finish[numberOfResources];
+	int need[numberOfProcesses][numberOfResources];
+	int safeSequence[numberOfProcesses];
+	int numFinished = 0;
+
+	//Initializing work and finish arrays
+	for(i = 0; i < numberOfResources; i++) {
+		work[i] = available[i];
+	}
+
+	for(i = 0; i < numberOfProcesses; i++) {
+		finish[i] = 0;
+	}
+
+	//Need matrix calculation
+	while(numFinished < numberOfProcesses) {
+		int found = 0;
+		for(i = 0; i < numberOfProcesses; i++) {
+			if(!finish[i]) {
+				int canFinish = 1;
+				for(j = 0; j < numberOfResources; j++) {
+					if(need[i][j] > work[j]) {
+						canFinish = 0;
+						break;
+					}
+				}
+				if(canFinish) {
+					for(j = 0; j < numberOfResources; j++) {
+						work[j] += allocation[i][j];
+					}
+					finish[i] = 1;
+					safeSequence[numFinished] = i;
+					numFinished++;
+					found = 1;
+				}
+			}
+		}
+		
+		if(!found) {
+			//deadlock detected
+			return 1;
+		}
+	}
+
+	//No deadlock detected
+	return 0;
 }
