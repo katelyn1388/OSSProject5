@@ -108,7 +108,7 @@ int main(int argc, char** iterations) {
 
 	
 	//Do nothing before at least 1 second has passed
-	while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
+	//while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
 
 
 

@@ -53,7 +53,7 @@ struct PCB {
 };
 
 //Process table
-struct PCB processTable[20] = {{0}};
+struct PCB processTable[18] = {{0}};
 
 struct PCB process;
 
@@ -74,8 +74,6 @@ struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
 key_t key;
-char secondsString[20];
-char nanoSecondsString[20];
 int maxResources[18][10];
 int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources };
 int allocatedResources[18][10] = {{ 0 }};
@@ -85,6 +83,7 @@ int deadlockedProcesses[18] = { 0 };
 
 
 int main(int argc, char **argv) {
+	printf("In the beginning...");
 	bool fileGiven = false, verboseOn = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
@@ -95,6 +94,7 @@ int main(int argc, char **argv) {
 			case 'h':
 				help();
 			case 'v':
+				printf("Verbose turned on");
 				verboseOn = true;
 				break;
 			case 'f':
@@ -276,11 +276,14 @@ int main(int argc, char **argv) {
 				}
 			}
 
+
+
 			if(totalWorkers > 40 || time(NULL) > endTime) 
 				doneCreating = true;
 
-			
-			if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) == -1) {
+			received.pid = 0;
+
+			/*if((messageReceived = msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) == -1) {
 				perror("\n\nFailed to receive message from child\n");
 				exit(1);
 			//If a process sent a message
@@ -295,12 +298,32 @@ int main(int argc, char **argv) {
 					} 	
 				}
 			} else
+				messageReceivedBool = false;*/
+
+			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
+				perror("\n\nFailed to receive message from child\n");
+				exit(1);
+			//If a process sent a message
+			} 
+			
+			if(received.pid != 0) {
+				messageReceivedBool = true;
+				resourceRequest = received.resource;
+				processChoice = received.choice;
+				for(i = 0; i < 18; i++) {
+					if(processTable[i].pid == received.pid) {
+						currentProcess = processTable[i];
+						break;
+					} 	
+				}
+			} else
 				messageReceivedBool = false;
+
 
 
 			//If process is requesting a resource
 			if(messageReceivedBool == true && processChoice == 1) {
-				currentPid = message.pid;
+				currentPid = received.pid;
 				
 				//Increasing the number of requests for that resource
 				resourceRequests[resourceRequest] += 1;
@@ -315,7 +338,7 @@ int main(int argc, char **argv) {
 
 					if(grantedRequests % 20 == 0 && verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
-						for(i = 0; i < totalWorkers; i++) {
+						for(i = 0; i < 18; i++) {
 							fprintf(logFile, "\nP%d:", i);
 							for(j = 0; j < 10; j++) {     
 								fprintf(logFile, "%d    ", processTable[i].currentResources[j]); 
@@ -323,7 +346,7 @@ int main(int argc, char **argv) {
 						}
 					
 						printf("\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
-						for(i = 0; i < totalWorkers; i++) {
+						for(i = 0; i < 18; i++) {
 							printf("\nP%d:", i);
 							for(j = 0; j < 10; j++) {     
 								printf("%d    ", processTable[i].currentResources[j]);
@@ -331,6 +354,9 @@ int main(int argc, char **argv) {
 						}
 
 					}
+
+					message.mtype = received.pid;
+					message.resource = received.resource;
 					
 					//Sending message back to child the good news that their request was granted
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
@@ -351,8 +377,8 @@ int main(int argc, char **argv) {
 		       	else if(messageReceivedBool == true && processChoice == 2) {
 				int resource = resourceRequest;
 				//Increasing the number of available instances of this resource, decreasing amount the process has 
-				availableResources[resourceRequest] += 1;
-				currentProcess.currentResources[resourceRequest] -= 1;
+				availableResources[resource] += 1;
+				currentProcess.currentResources[resource] -= 1;
 
 				//If any processes are blocked and waiting on a resource
 				if(blocked > 0) {
@@ -378,13 +404,14 @@ int main(int argc, char **argv) {
 					//decrease the process's requests, decrease available resources, and decrease number of blocked processes
 					currentProcess.requestedResource = -1;
 					availableResources[resource] -= 1;
+					resourceReleases[resource] += 1;
 					blocked--;
 				}
 				
 			//If a message was received and the process is terminating 
 			} else if(messageReceivedBool == true && processChoice == 3) {
 				//Reset PCB table entries for this process
-				currentPid = message.pid;
+				currentPid = received.pid;
 				currentProcess.occupied = 0;
 				currentProcess.pid = 0;
 				
@@ -415,6 +442,7 @@ int main(int argc, char **argv) {
 										
 										//Decrease the available instances of that resource, the requests for it, and the process's request 
 										processTable[j].requestedResource = -1;
+										resourceReleases[i] += 1;
 										availableResources[i] -= 1;
 										resourceRequests[i] -= 1;
 										//Remove one blocked processs since it got its required resource
