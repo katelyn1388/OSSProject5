@@ -68,14 +68,16 @@ bool deadlock(int available[], int max[][10], int allocation[][10], int numberOf
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 50000, grantedRequests = 0;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 50000, grantedRequests = 0, deadlockTime = 1;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
 key_t key;
 char secondsString[20];
 char nanoSecondsString[20];
-int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, };
+int maxResources[18][10];
+int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources };
+int allocatedResources[18][10] = {{ 0 }};
 int resourceRequests[10] = { 0 };
 int resourceReleases[10] = { 0 };
 
@@ -183,6 +185,13 @@ int main(int argc, char **argv) {
 			processTable[i].requestedResource = -1;
 		}
 
+		//initializing max request table for each process
+		for(i = 0; i < 18; i++) {
+			for(j = 0; i < 10; j++) {
+				maxResources[i][j] = 10;
+			}
+		}
+
 
 
 		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
@@ -240,7 +249,7 @@ int main(int argc, char **argv) {
 					else if(tempPid == 0) {
 						printf("execing a child");
 						if(execlp(args[0], args[0], NULL) == -1) {
-							printf(stderr, "Exec failed, terminating");
+							printf("Exec failed, terminating");
 							exit(1);
 						}
 						return 0;
@@ -303,7 +312,7 @@ int main(int argc, char **argv) {
 					if(grantedRequests % 20 == 0 && verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < totalWorkers; i++) {
-							fprintf(logFile, "\nP%d:", processTable[i]);
+							fprintf(logFile, "\nP%d:", i);
 							for(j = 0; j < 10; j++) {     
 								fprintf(logFile, "%d    ", processTable[i].currentResources[j]); 
 							}
@@ -311,7 +320,7 @@ int main(int argc, char **argv) {
 					
 						printf("\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < totalWorkers; i++) {
-							printf("\nP%d:", processTable[i]);
+							printf("\nP%d:", i);
 							for(j = 0; j < 10; j++) {     
 								printf("%d    ", processTable[i].currentResources[j]);
 							}
@@ -420,8 +429,26 @@ int main(int argc, char **argv) {
 
 			if(doneCreating && simulWorkers == 0) 
 				doneRunning = true;
+		
+		
 			//every second do deadlock detection
-			//do printing of table
+			if(*seconds >= deadlockTime) {
+				//allocatedResources = forloop stuff
+				for(i = 0; i < 18; i++) {
+					for(j = 0; j < 10; j++) {
+						allocatedResources[i][j] = processTable[i].currentResources[j];
+					}
+				}
+				deadlockTime++;
+				bool deadlockFound = true;
+
+				while(deadlockFound) {
+					deadlockFound = deadlock(maxResources, maxResources, allocatedResources, simulWorkers, 10);
+					if(deadlockFound) {
+						//Terminate processes involved 
+					}
+				}
+			}
 
 
 			//incrementClock(5000);
@@ -551,21 +578,26 @@ static int setupitimer(void) {
 
 
 
-bool deadlock(int available[], int max[][10],  int allocation[][10], int numberOfProcesses, int numberOfResources) {
-	int i, j, k;
+bool deadlock(int available[], int max[18][10],  int allocation[18][10], int numberOfProcesses, int numberOfResources) {
+	int i, j;
 	int work[numberOfResources];
 	int finish[numberOfResources];
 	int need[numberOfProcesses][numberOfResources];
-	int safeSequence[numberOfProcesses];
 	int numFinished = 0;
 
-	//Initializing work and finish arrays
+	//Initializing work, finish, and need arrays
 	for(i = 0; i < numberOfResources; i++) {
 		work[i] = available[i];
 	}
 
 	for(i = 0; i < numberOfProcesses; i++) {
 		finish[i] = 0;
+	}
+
+	for(i = 0; i < numberOfProcesses; i++) {
+		for(j = 0; j < numberOfResources; j++) {
+			need[i][j] = max[i][j] - allocation[i][j];
+		}
 	}
 
 	//Need matrix calculation
@@ -585,7 +617,6 @@ bool deadlock(int available[], int max[][10],  int allocation[][10], int numberO
 						work[j] += allocation[i][j];
 					}
 					finish[i] = 1;
-					safeSequence[numFinished] = i;
 					numFinished++;
 					found = 1;
 				}
