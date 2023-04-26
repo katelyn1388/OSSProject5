@@ -35,7 +35,7 @@ int main(int argc, char** iterations) {
 	received.mtype = 1;
 	message.pid = getpid();
 
-	int currentResources[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	int currentResources[10] = { 0 };
 
 	//Making sure message queue works	
 	if((key = ftok("msgq.txt", 'B')) == -1) {
@@ -45,12 +45,6 @@ int main(int argc, char** iterations) {
 
 	if((msqid = msgget(key, PERMS)) == -1) {
 		perror("msgget failed in child");
-		exit(1);
-	}
-
-	//Receiving message
-	if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
-		perror("msgrcv failed in child");
 		exit(1);
 	}
 
@@ -91,7 +85,7 @@ int main(int argc, char** iterations) {
 	int starterSec = *sharedSeconds + 1;
 
 
-	printf("\n\n\nWorker started\n\n\n");
+	printf("\nWorker started: %d\n", getpid());
 
 	//Random number generator
 	srand(getpid());
@@ -147,7 +141,7 @@ int main(int argc, char** iterations) {
 						enough = true;
 				}while(!enough);
 				message.choice = 1;
-				printf("Selected resource: %d", message.resource);
+				//printf("Selected resource: %d", message.resource);
 				//Pick a random resource, send to parent the request
 				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), IPC_NOWAIT) == -1) {
 					perror("msgsend to parent failed");

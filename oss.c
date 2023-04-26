@@ -253,20 +253,17 @@ int main(int argc, char **argv) {
 
 					char* args[] = {"./worker", 0};
 
-					printf("Creating a child - after fork");
+					//printf("Creating a child - after fork");
 
 					//Execing child off
 					if(tempPid < 0) { 
 						perror("fork");
 					} else if(tempPid == 0) {
 						printf("execing a child: %d", getpid());
-						execlp(args[0], args[0], args[1]); 
+						execlp(args[0], args[0], args[1], NULL); 
 						printf("Exec failed, terminating");
 						exit(1);
-					} else
-						printf("\n\nShould be printed once, my pid is: %d\n\n", getpid());
-
-					printf("\nAfter exec call\n\n");
+					} 
 
 					simulWorkers++;
 					totalWorkers++;
@@ -308,6 +305,10 @@ int main(int argc, char **argv) {
 			//If process is requesting a resource
 			if(messageReceivedBool == true && processChoice == 1) {
 				currentPid = received.pid;
+
+				printf("\nOss:  process %d has request R%d at time %d:%d", currentProcess.pid, resourceRequest, *seconds, *nanoSeconds);
+				fprintf(logFile, "\nOss:  process %d has request R%d at time %d:%d", currentProcess.pid, resourceRequest, *seconds, *nanoSeconds);
+
 				
 				//Increasing the number of requests for that resource
 				resourceRequests[resourceRequest] += 1;
@@ -319,6 +320,9 @@ int main(int argc, char **argv) {
 
 					grantedInstantly++;
 					grantedRequests++;
+
+					printf("\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
+					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 
 					if(grantedRequests % 20 == 0 && verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
@@ -354,6 +358,10 @@ int main(int argc, char **argv) {
 					//process gets blocked and requested resource gets set for future granting
 					blocked++;
 					currentProcess.requestedResource = resourceRequest;
+
+					printf("\nOss:  no instances of R%d available, process %d put on blocked queue at time %d:%d", resourceRequest, currentProcess.pid, 
+							*seconds, *nanoSeconds);
+					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 				}
 
 
