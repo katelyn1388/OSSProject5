@@ -28,7 +28,7 @@ struct my_msgbuf {
 int main(int argc, char** iterations) {
 	struct my_msgbuf message;
 	struct my_msgbuf received;
-	int msqid;
+	int msqid, i;
 	key_t key;
 	message.mtype = getppid();
 	message.intData = getppid();
@@ -86,6 +86,12 @@ int main(int argc, char** iterations) {
 
 
 	printf("\nWorker started: %d\n", getpid());
+	printf("\n%d's starting resource array: ", getpid());
+	for(i = 0; i < 10; i++) {
+		printf("%d, ", currentResources[i]);
+	}
+
+	
 
 	//Random number generator
 	srand(getpid());
@@ -124,9 +130,10 @@ int main(int argc, char** iterations) {
 			if(task == 0) {
 				terminated = true;
 				message.choice = 3;
+				printf("\nProcess %d is terminating\n", getpid());
 
 				//send message to parent that they're terminating and releasing all resources
-				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), IPC_NOWAIT) == -1) {
+				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
@@ -134,32 +141,44 @@ int main(int argc, char** iterations) {
 			} else if(task >= 1 && task <= 95) {
 				do {
 
-					message.resource = (rand() % (10 - 0 + 1)) + 0;
-					if(currentResources[message.resource] >= 20) 
+					message.resource = (rand() % (9 - 0 + 1)) + 0;
+					if(currentResources[message.resource] >= 19) 
 						enough = false;
 					else
 						enough = true;
 				}while(!enough);
 				message.choice = 1;
-				//printf("Selected resource: %d", message.resource);
+
 				//Pick a random resource, send to parent the request
-				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), IPC_NOWAIT) == -1) {
+				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
 
-				if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
+				/*if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
+					perror("msgrcv from parent failed");
+					exit(1);
+				}*/
+
+				while((msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0)) == -1) {
 					perror("msgrcv from parent failed");
 					exit(1);
 				}
 
+
 				int receivedResource = message.resource;
 				currentResources[receivedResource] += 1;
+
+				printf("\n%d's current resource array: ", getpid());
+				for(i = 0; i < 10; i++) {
+					printf("%d, ", currentResources[i]);
+				}
 
 
 			//Process is releasing a resource
 			} else {
 				message.choice = 2;
+				printf("\nProcess %d is releasing a resource\n", getpid());
 				while(!chosen) {
 					randomResource = (rand() % (10 - 0 + 1)) + 0;
 					if(currentResources[randomResource] > 0) {
@@ -169,7 +188,7 @@ int main(int argc, char** iterations) {
 					}
 				}
 				
-				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), IPC_NOWAIT) == -1) {
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
