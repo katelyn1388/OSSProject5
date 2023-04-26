@@ -86,18 +86,13 @@ int main(int argc, char** iterations) {
 
 
 	printf("\nWorker started: %d\n", getpid());
-	printf("\n%d's starting resource array: ", getpid());
-	for(i = 0; i < 10; i++) {
-		printf("%d, ", currentResources[i]);
-	}
-
 	
 
 	//Random number generator
 	srand(getpid());
-	bool terminated = false, chosen = false, enough = true;
+	bool terminated = false, chosen = false, enough = true, receivedMessage = false;
 	int randTimeMax = 250000000, billion = 1000000000;
-	int task, randomResource;
+	int task, randomResource, noResource;
 
 	//First random time to termiante, request resources, or release
 	int randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;
@@ -112,7 +107,7 @@ int main(int argc, char** iterations) {
 
 	
 	//Do nothing before at least 1 second has passed
-	while(*sharedSeconds < starterSec || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
+	while((*sharedSeconds < starterSec) || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
 
 
 
@@ -120,6 +115,8 @@ int main(int argc, char** iterations) {
 	while(!terminated) {
 		//Setting message queue variables to send back to parent
 		chosen = false;
+		noResource = 0;
+		receivedMessage = false;
 
 
 		//Random number to choose to terminate, request, or release
@@ -140,13 +137,13 @@ int main(int argc, char** iterations) {
 			//Process is choosing to request a resource
 			} else if(task >= 1 && task <= 95) {
 				do {
-
 					message.resource = (rand() % (9 - 0 + 1)) + 0;
 					if(currentResources[message.resource] >= 19) 
 						enough = false;
 					else
 						enough = true;
 				}while(!enough);
+				
 				message.choice = 1;
 
 				//Pick a random resource, send to parent the request
@@ -155,24 +152,34 @@ int main(int argc, char** iterations) {
 					exit(1);
 				}
 
-				/*if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
+
+
+				while(!receivedMessage) {
+
+					if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
+						if(errno == ENOMSG) {
+							receivedMessage = false;
+						} else {
+							perror("msgrcv from parent failed");
+							exit(1);
+						}
+					} else
+						receivedMessage = true;
+				}
+
+				/*while((msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0)) == -1) {
 					perror("msgrcv from parent failed");
 					exit(1);
 				}*/
-
-				while((msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0)) == -1) {
-					perror("msgrcv from parent failed");
-					exit(1);
-				}
 
 
 				int receivedResource = message.resource;
 				currentResources[receivedResource] += 1;
 
-				printf("\n%d's current resource array: ", getpid());
+				/*printf("\n%d's current resource array: ", getpid());
 				for(i = 0; i < 10; i++) {
 					printf("%d, ", currentResources[i]);
-				}
+				}*/
 
 
 			//Process is releasing a resource
@@ -185,12 +192,18 @@ int main(int argc, char** iterations) {
 						message.resource = randomResource;
 						currentResources[randomResource] -= 1;
 						chosen = true;
-					}
+					} else
+						noResource++;
+
+					if(noResource == 10)
+						chosen = true;
 				}
-				
-				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
-					perror("msgsend to parent failed");
-					exit(1);
+
+				if(noResource != 10) {
+					if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+						perror("msgsend to parent failed");
+						exit(1);
+					}
 				}
 
 			}

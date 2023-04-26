@@ -69,7 +69,7 @@ bool deadlock();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 60500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 100500, grantedRequests = 0, deadlockTime = 1;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -328,7 +328,7 @@ int main(int argc, char **argv) {
 					printf("\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 
-					if(grantedRequests % 20 == 0 && verboseOn) {
+					if((grantedRequests % 20) == 0 && verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
 							fprintf(logFile, "\nP%d:", i);
@@ -381,6 +381,13 @@ int main(int argc, char **argv) {
 					//Decrease number of requests for this resource instance since it's about to be granted
 					resourceRequests[resource] -= 1;
 
+					printf("\n\n\nCurrently available resources: ");
+					for(i = 0; i < 10; i++) {
+						printf("%d, ", availableResources[i]);
+					}
+
+
+
 					//For each process, if they need the resource just released, give it to them
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].requestedResource == resource) {
@@ -411,9 +418,9 @@ int main(int argc, char **argv) {
 				currentProcess.occupied = 0;
 				currentProcess.pid = 0;
 
-				terminateProcess(currentProcess);
+				//terminateProcess(currentProcess);
 				
-			/*	//If there are any blocked processes waiting on a resource
+				//If there are any blocked processes waiting on a resource
 				if(blocked > 0) {
 					//For each of the 10 resource types
 					for(i = 0; i < 10; i++) {
@@ -451,7 +458,7 @@ int main(int argc, char **argv) {
 							}
 						}
 					}
-				}*/
+				}
 
 				//Decreasing simul workers
 				simulWorkers--;
