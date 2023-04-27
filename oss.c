@@ -70,7 +70,8 @@ bool deadlock2();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 200500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 500500, grantedRequests = 0, deadlockTime = 1;
+bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -84,7 +85,7 @@ int deadlockedProcesses[18] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool fileGiven = false, verboseOn = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -302,11 +303,19 @@ int main(int argc, char **argv) {
 
 			//If process is requesting a resource
 			if(messageReceivedBool == true && processChoice == 1) {
+				printf("\n\n\nCurrently available resources: ");
+				for(i = 0; i < 10; i++) {
+					printf("%d, ", availableResources[i]);
+				}
+
+
 				currentPid = received.pid;
 
 				printf("\nOss:  process %d has request R%d at time %d:%d", currentProcess.pid, resourceRequest, *seconds, *nanoSeconds);
-				fprintf(logFile, "\nOss:  process %d has request R%d at time %d:%d", currentProcess.pid, resourceRequest, *seconds, *nanoSeconds);
-
+				
+				if(fileLines < fileLineMax && verboseOn) {
+					fprintf(logFile, "\nOss:  process %d has request R%d at time %d:%d", currentProcess.pid, resourceRequest, *seconds, *nanoSeconds);
+				}
 				
 				//Increasing the number of requests for that resource
 				resourceRequests[resourceRequest] += 1;
@@ -315,11 +324,7 @@ int main(int argc, char **argv) {
 					availableResources[resourceRequest] -= 1;
 					resourceRequests[resourceRequest] -= 1;
 
-					printf("\n\n\nCurrently available resources: ");
-					for(i = 0; i < 10; i++) {
-						printf("%d, ", availableResources[i]);
-					}
-
+					
 
 					grantedInstantly++;
 					grantedRequests++;
@@ -366,7 +371,11 @@ int main(int argc, char **argv) {
 
 					printf("\nOss:  no instances of R%d available, process %d put on blocked queue at time %d:%d", resourceRequest, currentProcess.pid, 
 							*seconds, *nanoSeconds);
-					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
+
+					if(fileLines < fileLineMax && verboseOn) {
+						fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, 
+								*nanoSeconds);
+					}
 				}
 
 
@@ -376,6 +385,12 @@ int main(int argc, char **argv) {
 				//Increasing the number of available instances of this resource, decreasing amount the process has 
 				availableResources[resource] += 1;
 				currentProcess.currentResources[resource] -= 1;
+
+				printf("\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
+
+				if(fileLines < fileLineMax && verboseOn) 
+					fprintf(logFile, "\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
+
 
 				//If any processes are blocked and waiting on a resource
 				if(blocked > 0) {
@@ -423,47 +438,60 @@ int main(int argc, char **argv) {
 					printf("%d, ", availableResources[i]);
 				}
 
+				if(fileLines < fileLineMax && verboseOn) 
+					fprintf(logFile, "\nOss: process %d is terminating", currentProcess.pid);
+
+				printf("\nOss: process %d is terminating", currentProcess.pid);
+
+
+
 				//Reset PCB table entries for this process
 				currentPid = received.pid;
 				currentProcess.occupied = 0;
 				currentProcess.pid = 0;
 
 				//terminateProcess(currentProcess);
-				
-				//If there are any blocked processes waiting on a resource
-				if(blocked > 0) {
-					//For each of the 10 resource types
-					for(i = 0; i < 10; i++) {
-						//If the terminating process has any of that resource
-						if(currentProcess.currentResources[i] > 0) {
-							int count = currentProcess.currentResources[i];
-							
-							//For each instance of that resource the process has
-							for(i = 0; i < count; i++) {
-								availableResources[i] += 1;
-								
-								//For each process that might need that resource
-								for(j = 0; j < 18; j++) {
-									//If the currently tested process needs that resource
-									if(processTable[j].requestedResource == resourceRequest) {
+			
+				if(fileLines < fileLineMax && verboseOn) 
+					fprintf(logFile, "\n     Oss: resources released by %d:  ", currentPid);
 
-										//Send process the message that they're finally getting the resource
-										message.mtype = processTable[j].pid;
-										//message.intData = processTable[j].pid;
-										if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
-											perror("\n\nmsgsend to child failed");
-											exit(1);
-										}
-										
-										//Decrease the available instances of that resource, the requests for it, and the process's request 
-										processTable[j].requestedResource = -1;
-										resourceReleases[i] += 1;
-										availableResources[i] -= 1;
-										resourceRequests[i] -= 1;
-										//Remove one blocked processs since it got its required resource
-										blocked--;	
-										break;
+
+				//For each of the 10 resource types
+				for(i = 0; i < 10; i++) {
+					//If the terminating process has any of that resource
+					if(currentProcess.currentResources[i] > 0) {
+						int count = currentProcess.currentResources[i];
+						/*if(fileLines < fileLineMax && verboseOn) 
+							fprintf(logFile, "R%d: %d, ", i, count);
+
+						printf("R%d: %d, ", i, count);*/
+
+						
+						//For each instance of that resource the process has
+						for(i = 0; i < count; i++) {
+							availableResources[i] += 1;
+							
+							//For each process that might need that resource
+							for(j = 0; j < 18; j++) {
+								//If the currently tested process needs that resource
+								if(processTable[j].requestedResource == resourceRequest) {
+
+									//Send process the message that they're finally getting the resource
+									message.mtype = processTable[j].pid;
+									//message.intData = processTable[j].pid;
+									if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+										perror("\n\nmsgsend to child failed");
+										exit(1);
 									}
+									
+									//Decrease the available instances of that resource, the requests for it, and the process's request 
+									processTable[j].requestedResource = -1;
+									resourceReleases[i] += 1;
+									availableResources[i] -= 1;
+									resourceRequests[i] -= 1;
+									//Remove one blocked processs since it got its required resource
+									blocked--;	
+									break;
 								}
 							}
 						}
@@ -592,6 +620,11 @@ void terminateProcess(struct PCB currentProcess) {
 		//If the terminating process has any of that resource
 		if(currentProcess.currentResources[i] > 0) {
 			int count = currentProcess.currentResources[i];
+			if(fileLines < fileLineMax && verboseOn) 
+				fprintf(logFile, "R%d: %d, ", i, count);
+
+			printf("R%d: %d, ", i, count);
+
 			
 			//For each instance of that resource the process has
 			for(i = 0; i < count; i++) {
