@@ -38,7 +38,7 @@ int main(int argc, char** iterations) {
 	int currentResources[10] = { 0 };
 
 	//Making sure message queue works	
-	if((key = ftok("msgq.txt", 'B')) == -1) {
+	if((key = ftok("msgq.txt", 1)) == -1) {
 		perror("ftok");
 		exit(1);
 	}
@@ -105,17 +105,15 @@ int main(int argc, char** iterations) {
 		chooseTimeSec += 1;
 	}
 
-	int skip = 0;
+	printf("Choose time: %d:%d", *sharedSeconds, *sharedNanoSeconds);
+
+	bool ready = false;
 	
 	//Do nothing before at least 1 second has passed
-	while((*sharedSeconds < starterSec) || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) {
-		/*if(!(skip > 100)) {
-			printf("    %d:%d    ", *sharedSeconds, *sharedNanoSeconds);
-		}*/
-		skip++;
+	while(!ready) {
+		if((*sharedSeconds < starterSec) || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
+			ready = true;
 	}	       
-
-
 
 
 	while(!terminated) {
@@ -132,7 +130,7 @@ int main(int argc, char** iterations) {
 			chosen = false;
 
 			if(task == 0) {
-				terminated = true;
+				//terminated = true;
 				message.choice = 3;
 				printf("\nProcess %d is terminating\n", getpid());
 
@@ -149,7 +147,7 @@ int main(int argc, char** iterations) {
 						enough = false;
 					else
 						enough = true;
-				}while(!enough);
+				} while(!enough);
 
 				printf("\n\n%d: requesting R%d", getpid(), message.resource);
 
@@ -160,20 +158,21 @@ int main(int argc, char** iterations) {
 				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
-				}
+				} else
+					printf("Message sent to parent");
 
 
 
 				while(!receivedMessage) {
 					if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
-						if(errno == ENOMSG) {
+						/*if(errno == ENOMSG) {
 							receivedMessage = false;
-						} else {
+						} else {*/
 							perror("msgrcv from parent failed");
 							exit(1);
 						}
-					} else
-						receivedMessage = true;
+				/*	} else
+						receivedMessage = true;*/
 
 				
 
@@ -232,7 +231,6 @@ int main(int argc, char** iterations) {
 				chooseTimeNano = ((*sharedNanoSeconds + randomTime) - billion);
 				chooseTimeSec += 1;
 			}
-
 
 		}
 				

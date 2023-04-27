@@ -70,7 +70,7 @@ bool deadlock2();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 5500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 5000, grantedRequests = 0, deadlockTime = 1;
 bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
@@ -85,7 +85,7 @@ int deadlockedProcesses[18] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, firstTime = true;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -107,6 +107,14 @@ int main(int argc, char **argv) {
 
 
 	printf("\nProgram is starting...");
+
+	printf("\nStarting resources for each process block: \n");
+	for(i = 0; i < 18; i++) {
+		printf("\n%d:", i);
+		for(j = 0; j < 10; j++) {	
+			printf("     --R%d:%d", j, processTable[i].currentResources[j]);
+		}
+	}
 
 
 	//Opening log file
@@ -170,13 +178,13 @@ int main(int argc, char **argv) {
 
 		//Message queue setup
 		system("touch msgq.txt");
-		if((key = ftok("msgq.txt", 'B')) == -1) {
+		if((key = ftok("msgq.txt", 1)) == -1) {
 			perror("ftok");
 			exit(1);
 		}
 
 		if((msqid = msgget(key, PERMS | IPC_CREAT)) == -1) {
-			perror("msgget");
+			perror("msgget in parent");
 			exit(1);
 		}
 
@@ -207,7 +215,7 @@ int main(int argc, char **argv) {
 	
 		//First random creation time
 		srand(getpid());
-		int randomTime = rand() % maxNewNano;
+		int randomTime = (rand() % (maxNewNano - 1 + 1)) + 1;
 		int chooseTimeNano = *seconds, chooseTimeSec = *seconds;
 		if((*nanoSeconds + randomTime) < billion)
 			chooseTimeNano += randomTime;
@@ -220,7 +228,8 @@ int main(int argc, char **argv) {
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while(!doneRunning) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
-			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano) /*|| firstTime*/) {
+				firstTime = false;
 				if((simulWorkers < 1) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
@@ -230,6 +239,7 @@ int main(int argc, char **argv) {
 					}
 
 					//Forking child
+					printf("\nForking now...");
 					tempPid = fork();
 
 					
@@ -251,8 +261,6 @@ int main(int argc, char **argv) {
 
 					char* args[] = {"./worker", 0};
 
-					//printf("Creating a child - after fork");
-
 					//Execing child off
 					if(tempPid < 0) { 
 						perror("fork");
@@ -272,7 +280,7 @@ int main(int argc, char **argv) {
 
 			if(totalWorkers > 40 || time(NULL) > endTime) {
 				doneCreating = true;
-				printf("\nDone creating workers, total = %d", totalWorkers); 
+				//printf("\nDone creating workers, total = %d", totalWorkers); 
 			}
 
 			received.pid = 0;
@@ -321,6 +329,7 @@ int main(int argc, char **argv) {
 					//reduce available resource and resource requests since it was granted
 					availableResources[resourceRequest] -= 1;
 					resourceRequests[resourceRequest] -= 1;
+					currentProcess.currentResources[resourceRequest] += 1;
 
 					
 
@@ -332,10 +341,10 @@ int main(int argc, char **argv) {
 					printf("\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 
-					if((grantedRequests % 20) == 0 && verboseOn) {
+					if(/*(grantedRequests % 20) == 0 &&*/ verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
-							fprintf(logFile, "\nP%d:", i);
+							fprintf(logFile, "\nP%d:     ", i);
 							for(j = 0; j < 10; j++) {     
 								fprintf(logFile, "%d    ", processTable[i].currentResources[j]); 
 							}
@@ -343,7 +352,7 @@ int main(int argc, char **argv) {
 					
 						printf("\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
-							printf("\nP%d:", i);
+							printf("\nP%d:     ", i);
 							for(j = 0; j < 10; j++) {     
 								printf("%d    ", processTable[i].currentResources[j]);
 							}
@@ -510,12 +519,14 @@ int main(int argc, char **argv) {
 
 			}
 
-			if(doneCreating && simulWorkers == 0) 
+			if(doneCreating && simulWorkers == 0) { 
 				doneRunning = true;
+				printf("Done running");
+			}
 		
 		
 			//every second do deadlock detection
-			if(*seconds >= deadlockTime) {
+			/*if(*seconds >= deadlockTime) {
 				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
 				for(i = 0; i < 18; i++) {
@@ -532,7 +543,7 @@ int main(int argc, char **argv) {
 						for(i = 0; i < 18; i++) {
 							//Terminate processes involved 
 							if(deadlockedProcesses[i] == 1) {
-								terminateProcess(processTable[i]);
+								//terminateProcess(processTable[i]);
 								printf("\nDeadlock status: %d     current deadlocked process terminated: %d", deadlockFound, processTable[i].pid); 
 								currentProcess.occupied = 0;
 								currentProcess.pid = 0;
@@ -542,7 +553,7 @@ int main(int argc, char **argv) {
 					}
 				}
 				printf("\nDone with deadlock detection");
-			}
+			}*/
 
 
 			//incrementClock(5000);
@@ -553,6 +564,8 @@ int main(int argc, char **argv) {
 				*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
 				*seconds += 1;
 			}
+
+			//printf("\nCurrent time: %d:%d", *seconds, *nanoSeconds);
 
 		}
 
