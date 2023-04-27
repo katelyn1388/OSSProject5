@@ -143,11 +143,13 @@ int main(int argc, char** iterations) {
 			} else if(task >= 1 && task <= 95) {
 				do {
 					message.resource = (rand() % (9 - 0 + 1)) + 0;
-					if(currentResources[message.resource] >= 19) 
+					if(currentResources[message.resource] >= 19){
 						enough = false;
-					else
+					} else {
 						enough = true;
-				} while(!enough);
+					}
+
+				} while(enough == false);
 
 				printf("\n\n%d: requesting R%d", getpid(), message.resource);
 
@@ -158,13 +160,12 @@ int main(int argc, char** iterations) {
 				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 					perror("msgsend to parent failed");
 					exit(1);
-				} else
-					printf("Message sent to parent");
+				} 
 
 
 
 				while(!receivedMessage) {
-					if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
+					if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
 						/*if(errno == ENOMSG) {
 							receivedMessage = false;
 						} else {*/
@@ -176,14 +177,12 @@ int main(int argc, char** iterations) {
 
 				
 
-					printf("Message from parent: R-%d", received.resource);
 
 					if(received.resource < 0) {
 						receivedResource = (received.resource * (-1));
 						currentResources[receivedResource] += 1;
 						resourceTotal++;
 						receivedMessage = true;
-						printf("2nd time:   Message from parent: R-%d", received.resource);
 					} else {
 						receivedMessage = false;
 					}
@@ -235,6 +234,8 @@ int main(int argc, char** iterations) {
 		}
 				
 	}
+
+	printf("\n\n%d: terminated", getpid());
 
 	return 0;
 

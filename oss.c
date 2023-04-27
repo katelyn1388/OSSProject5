@@ -95,7 +95,6 @@ int main(int argc, char **argv) {
 			case 'h':
 				help();
 			case 'v':
-				printf("\nVerbose turned on");
 				verboseOn = true;
 				break;
 			case 'f':
@@ -108,13 +107,13 @@ int main(int argc, char **argv) {
 
 	printf("\nProgram is starting...");
 
-	printf("\nStarting resources for each process block: \n");
+	/*printf("\nStarting resources for each process block: \n");
 	for(i = 0; i < 18; i++) {
 		printf("\n%d:", i);
 		for(j = 0; j < 10; j++) {	
 			printf("     --R%d:%d", j, processTable[i].currentResources[j]);
 		}
-	}
+	}*/
 
 
 	//Opening log file
