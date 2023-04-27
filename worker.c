@@ -125,9 +125,6 @@ int main(int argc, char** iterations) {
 		//Random number to choose to terminate, request, or release
 		if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
 			task = (rand() % (100 - 0 + 1)) + 0;
-			printf("Task: %d", task);
-
-			chosen = false;
 
 			if(task == 0) {
 				//terminated = true;
@@ -166,19 +163,17 @@ int main(int argc, char** iterations) {
 
 				while(!receivedMessage) {
 					if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
-						/*if(errno == ENOMSG) {
+						if(errno == ENOMSG) {
 							receivedMessage = false;
-						} else {*/
+						} else {
 							perror("msgrcv from parent failed");
 							exit(1);
 						}
-				/*	} else
-						receivedMessage = true;*/
-
-				
+					} else
+						receivedMessage = true;
 
 
-					if(received.resource < 0) {
+					if(received.resource <= 0) {
 						receivedResource = (received.resource * (-1));
 						currentResources[receivedResource] += 1;
 						resourceTotal++;

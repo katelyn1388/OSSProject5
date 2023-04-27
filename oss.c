@@ -66,11 +66,12 @@ static int setupinterrupt();
 static int setupitimer();
 bool deadlock();
 bool deadlock2();
+bool req_lt_avail();
 
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 5000, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 2500, grantedRequests = 0, deadlockTime = 1;
 bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
@@ -279,7 +280,7 @@ int main(int argc, char **argv) {
 
 			if(totalWorkers > 40 || time(NULL) > endTime) {
 				doneCreating = true;
-				//printf("\nDone creating workers, total = %d", totalWorkers); 
+				printf("\nDone creating workers, total = %d", totalWorkers); 
 			}
 
 			received.pid = 0;
@@ -330,6 +331,8 @@ int main(int argc, char **argv) {
 					resourceRequests[resourceRequest] -= 1;
 					currentProcess.currentResources[resourceRequest] += 1;
 
+					printf("\nOSS: Current process pid: %d", currentProcess.pid);
+
 					
 
 					grantedInstantly++;
@@ -340,7 +343,7 @@ int main(int argc, char **argv) {
 					printf("\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 					fprintf(logFile, "\nOss:  request of R%d for process %d is granted at time %d:%d", resourceRequest, currentProcess.pid, *seconds, *nanoSeconds);
 
-					if(/*(grantedRequests % 20) == 0 &&*/ verboseOn) {
+					if((grantedRequests % 20) == 0 && verboseOn) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
 							fprintf(logFile, "\nP%d:     ", i);
@@ -356,13 +359,13 @@ int main(int argc, char **argv) {
 								printf("%d    ", processTable[i].currentResources[j]);
 							}
 						}
-
+											
 					}
 
 					message.mtype = received.pid;
 					message.resource = (0 - received.resource);
 
-					printf("OSS:   Sending back to child %d:   %d", received.pid, message.resource);
+					printf("\nOSS:   Sending back to child %d:   %d", received.pid, message.resource);
 					
 					//Sending message back to child the good news that their request was granted
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
@@ -371,6 +374,7 @@ int main(int argc, char **argv) {
 					}
 					//Increasing number of resources by 1 for process
 					currentProcess.currentResources[resourceRequest] += 1;
+					printf("\nOSS: Process %d's current number of type R%d resource: %d", currentProcess.pid, (message.resource * -1), currentProcess.currentResources[resourceRequest]);
 
 				} else {
 					//process gets blocked and requested resource gets set for future granting
@@ -394,7 +398,7 @@ int main(int argc, char **argv) {
 				availableResources[resource] += 1;
 				currentProcess.currentResources[resource] -= 1;
 
-				printf("\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
+				printf("\n\n\n\n\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
 
 				if(fileLines < fileLineMax && verboseOn) 
 					fprintf(logFile, "\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
@@ -439,13 +443,6 @@ int main(int argc, char **argv) {
 			//If a message was received and the process is terminating 
 			} else if(messageReceivedBool == true && processChoice == 3) {
 
-				//testing
-				printf("terminating process, current total simul processes before - %d", simulWorkers);
-				printf("\n\n\nCurrently available resources before termination: ");
-				for(i = 0; i < 10; i++) {
-					printf("%d, ", availableResources[i]);
-				}
-
 				if(fileLines < fileLineMax && verboseOn) 
 					fprintf(logFile, "\nOss: process %d is terminating", currentProcess.pid);
 
@@ -463,16 +460,18 @@ int main(int argc, char **argv) {
 				if(fileLines < fileLineMax && verboseOn) 
 					fprintf(logFile, "\n     Oss: resources released by %d:  ", currentPid);
 
+				printf("\n     Oss: resources released by %d:  ", currentPid);
+
 
 				//For each of the 10 resource types
 				for(i = 0; i < 10; i++) {
 					//If the terminating process has any of that resource
 					if(currentProcess.currentResources[i] > 0) {
 						int count = currentProcess.currentResources[i];
-						/*if(fileLines < fileLineMax && verboseOn) 
+						if(fileLines < fileLineMax && verboseOn) 
 							fprintf(logFile, "R%d: %d, ", i, count);
 
-						printf("R%d: %d, ", i, count);*/
+						printf("R%d: %d, ", i, count);
 
 						
 						//For each instance of that resource the process has
@@ -525,7 +524,7 @@ int main(int argc, char **argv) {
 		
 		
 			//every second do deadlock detection
-			/*if(*seconds >= deadlockTime) {
+			if(*seconds >= deadlockTime) {
 				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
 				for(i = 0; i < 18; i++) {
@@ -552,7 +551,7 @@ int main(int argc, char **argv) {
 					}
 				}
 				printf("\nDone with deadlock detection");
-			}*/
+			}
 
 
 			//incrementClock(5000);
@@ -809,6 +808,36 @@ bool deadlock() {
 	int work[10];
 	bool finish[18];
 
-	for(i = 0; i < 10; work[i] = available
+	for(i (0); i < 10; work[i] = availableResources[i++]);
+	for(i (0); i < simulWorkers; finish[i++]); = false;
 
+	int p(0);
+
+	for(; p < n; p++) {
+		if(finish[p]) continue;
+		if(req_lt_avail(p)) {
+			finish[p] = true;
+			for(i (0); i < 10; i++)
+				work[i] += allocatedResources[p*m+i];
+			p = -1;
+		}	
+	}
+
+	for(p = 0; p < n; p++) {
+		if(!finish[p])
+			break;
+	}
+
+	return(p != simulWorkers);
+
+}
+
+bool req_lt_avail(int p) {
+	i (0);
+	for(; i < 10; i++) {
+		if(resourceRequests[p * 10 + i] < availableResources[i])
+			break;
+	}
+
+	return(i == 10);
 }*/
