@@ -65,11 +65,12 @@ static void myhandler(int s);
 static int setupinterrupt();
 static int setupitimer();
 bool deadlock();
+bool deadlock2();
 
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 100500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 200500, grantedRequests = 0, deadlockTime = 1;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -399,6 +400,7 @@ int main(int argc, char **argv) {
 					//Tell lucky process their wish is granted
 					message.mtype = currentProcess.pid;
 					message.intData = currentProcess.pid;
+					message.resource = (0 - resource);
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 						perror("\n\nmsgsend to child failed");
 						exit(1);
@@ -413,6 +415,14 @@ int main(int argc, char **argv) {
 				
 			//If a message was received and the process is terminating 
 			} else if(messageReceivedBool == true && processChoice == 3) {
+
+				//testing
+				printf("terminating process, current total simul processes before - %d", simulWorkers);
+				printf("\n\n\nCurrently available resources before termination: ");
+				for(i = 0; i < 10; i++) {
+					printf("%d, ", availableResources[i]);
+				}
+
 				//Reset PCB table entries for this process
 				currentPid = received.pid;
 				currentProcess.occupied = 0;
@@ -462,6 +472,14 @@ int main(int argc, char **argv) {
 
 				//Decreasing simul workers
 				simulWorkers--;
+
+				//Testing 
+				printf("terminating process, current total simul processes after - %d", simulWorkers);
+				printf("\n\n\nCurrently available resources before termination: ");
+				for(i = 0; i < 10; i++) {
+					printf("%d, ", availableResources[i]);
+				}
+
 			}
 
 			if(doneCreating && simulWorkers == 0) 
@@ -554,7 +572,7 @@ int help() {
 
 
 void terminateProcess(struct PCB currentProcess) {
-	printf("In terminate process function, still empty though");
+	printf("\n\n\nTerminating processn\n");
 
 	//Connect to message queue
 	if((key = ftok("msgq.txt", 'B')) == -1) {
@@ -737,3 +755,13 @@ bool deadlock() {
 	//No deadlock detected
 	return 0;
 }
+
+
+
+/*bool deadlock2() {
+	int work[10];
+	bool finish[18];
+
+	for(i = 0; i < 10; work[i] = available
+
+}*/

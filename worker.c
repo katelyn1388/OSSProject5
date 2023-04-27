@@ -92,7 +92,7 @@ int main(int argc, char** iterations) {
 	srand(getpid());
 	bool terminated = false, chosen = false, enough = true, receivedMessage = false;
 	int randTimeMax = 250000000, billion = 1000000000;
-	int task, randomResource, noResource;
+	int task, randomResource, resourceTotal = 0, receivedResource = 0;
 
 	//First random time to termiante, request resources, or release
 	int randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;
@@ -115,7 +115,6 @@ int main(int argc, char** iterations) {
 	while(!terminated) {
 		//Setting message queue variables to send back to parent
 		chosen = false;
-		noResource = 0;
 		receivedMessage = false;
 
 
@@ -143,6 +142,8 @@ int main(int argc, char** iterations) {
 					else
 						enough = true;
 				}while(!enough);
+
+				resourceTotal++;
 				
 				message.choice = 1;
 
@@ -165,16 +166,15 @@ int main(int argc, char** iterations) {
 						}
 					} else
 						receivedMessage = true;
+
+					if(received.resource < 0) {
+						receivedResource = (received.resource * (-1));
+						currentResources[receivedResource] += 1;
+					} else {
+						receivedMessage = false;
+					}
 				}
 
-				/*while((msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0)) == -1) {
-					perror("msgrcv from parent failed");
-					exit(1);
-				}*/
-
-
-				int receivedResource = message.resource;
-				currentResources[receivedResource] += 1;
 
 				/*printf("\n%d's current resource array: ", getpid());
 				for(i = 0; i < 10; i++) {
@@ -184,27 +184,27 @@ int main(int argc, char** iterations) {
 
 			//Process is releasing a resource
 			} else {
+				if(resourceTotal == 0)
+					continue;
+
 				message.choice = 2;
-				printf("\nProcess %d is releasing a resource\n", getpid());
 				while(!chosen) {
 					randomResource = (rand() % (10 - 0 + 1)) + 0;
 					if(currentResources[randomResource] > 0) {
 						message.resource = randomResource;
 						currentResources[randomResource] -= 1;
 						chosen = true;
-					} else
-						noResource++;
+					} 
 
-					if(noResource == 10)
-						chosen = true;
 				}
 
-				if(noResource != 10) {
-					if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
-						perror("msgsend to parent failed");
-						exit(1);
-					}
+				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
+					perror("msgsend to parent failed");
+					exit(1);
 				}
+
+				printf("\nProcess %d is releasing a resource\n", getpid());
+				resourceTotal--;
 
 			}
 
