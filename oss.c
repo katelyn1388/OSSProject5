@@ -71,7 +71,7 @@ bool req_lt_avail();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 2500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 2500, grantedRequests = 0, deadlockTime = 1, k = 0;
 bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
 
 			if(totalWorkers > 40 || time(NULL) > endTime) {
 				doneCreating = true;
-				printf("\nDone creating workers, total = %d", totalWorkers); 
+			//	printf("\nDone creating workers, total = %d", totalWorkers); 
 			}
 
 			received.pid = 0;
@@ -329,7 +329,11 @@ int main(int argc, char **argv) {
 					//reduce available resource and resource requests since it was granted
 					availableResources[resourceRequest] -= 1;
 					resourceRequests[resourceRequest] -= 1;
+
+					printf("\nBefore resource increment: %d", currentProcess.currentResources[resourceRequest]);
 					currentProcess.currentResources[resourceRequest] += 1;
+					printf("\nAfter resource increment: %d", currentProcess.currentResources[resourceRequest]);
+
 
 					printf("\nOSS: Current process pid: %d", currentProcess.pid);
 
@@ -396,7 +400,10 @@ int main(int argc, char **argv) {
 				int resource = resourceRequest;
 				//Increasing the number of available instances of this resource, decreasing amount the process has 
 				availableResources[resource] += 1;
+
+				printf("\nBefore resource decrement: %d", currentProcess.currentResources[resourceRequest]);
 				currentProcess.currentResources[resource] -= 1;
+				printf("\nAfter resource increment: %d", currentProcess.currentResources[resourceRequest]);
 
 				printf("\n\n\n\n\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
 
@@ -475,8 +482,9 @@ int main(int argc, char **argv) {
 
 						
 						//For each instance of that resource the process has
-						for(i = 0; i < count; i++) {
-							availableResources[i] += 1;
+						for(k = 0; k < count; k++) {
+							availableResources[k] += 1;
+						
 							
 							//For each process that might need that resource
 							for(j = 0; j < 18; j++) {
@@ -502,6 +510,7 @@ int main(int argc, char **argv) {
 								}
 							}
 						}
+						
 					}
 				}
 
@@ -524,7 +533,7 @@ int main(int argc, char **argv) {
 		
 		
 			//every second do deadlock detection
-			if(*seconds >= deadlockTime) {
+			/*if(*seconds >= deadlockTime) {
 				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
 				for(i = 0; i < 18; i++) {
@@ -551,7 +560,7 @@ int main(int argc, char **argv) {
 					}
 				}
 				printf("\nDone with deadlock detection");
-			}
+			}*/
 
 
 			//incrementClock(5000);
