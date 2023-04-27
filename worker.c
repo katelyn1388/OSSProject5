@@ -105,9 +105,15 @@ int main(int argc, char** iterations) {
 		chooseTimeSec += 1;
 	}
 
+	int skip = 0;
 	
 	//Do nothing before at least 1 second has passed
-	while((*sharedSeconds < starterSec) || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) 
+	while((*sharedSeconds < starterSec) || (*sharedSeconds == starterSec && *sharedNanoSeconds < starterNano)) {
+		/*if(!(skip > 100)) {
+			printf("    %d:%d    ", *sharedSeconds, *sharedNanoSeconds);
+		}*/
+		skip++;
+	}	       
 
 
 
@@ -121,6 +127,8 @@ int main(int argc, char** iterations) {
 		//Random number to choose to terminate, request, or release
 		if(*sharedSeconds > chooseTimeSec || (*sharedSeconds == chooseTimeSec && *sharedNanoSeconds >= chooseTimeNano)) {
 			task = (rand() % (100 - 0 + 1)) + 0;
+			printf("Task: %d", task);
+
 			chosen = false;
 
 			if(task == 0) {
@@ -143,7 +151,8 @@ int main(int argc, char** iterations) {
 						enough = true;
 				}while(!enough);
 
-				resourceTotal++;
+				printf("\n\n%d: requesting R%d", getpid(), message.resource);
+
 				
 				message.choice = 1;
 
@@ -156,7 +165,6 @@ int main(int argc, char** iterations) {
 
 
 				while(!receivedMessage) {
-
 					if(msgrcv(msqid, &message, sizeof(my_msgbuf), getpid(), 0) == -1) {
 						if(errno == ENOMSG) {
 							receivedMessage = false;
@@ -167,21 +175,28 @@ int main(int argc, char** iterations) {
 					} else
 						receivedMessage = true;
 
+				
+
+					printf("Message from parent: R-%d", received.resource);
+
 					if(received.resource < 0) {
 						receivedResource = (received.resource * (-1));
 						currentResources[receivedResource] += 1;
+						resourceTotal++;
+						receivedMessage = true;
+						printf("2nd time:   Message from parent: R-%d", received.resource);
 					} else {
 						receivedMessage = false;
 					}
 				}
+				
 
+				printf("\n%d: Getting R%d", getpid(), receivedResource);
 
-				/*printf("\n%d's current resource array: ", getpid());
+				printf("\n%d's current resource array: ", getpid());
 				for(i = 0; i < 10; i++) {
 					printf("%d, ", currentResources[i]);
-				}*/
-
-
+				}
 			//Process is releasing a resource
 			} else {
 				if(resourceTotal == 0)
@@ -208,8 +223,19 @@ int main(int argc, char** iterations) {
 
 			}
 
+			//Generating next random time 
+			randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;
+			if((*sharedNanoSeconds + randomTime) < billion)
+				chooseTimeNano += randomTime;
+			else
+			{
+				chooseTimeNano = ((*sharedNanoSeconds + randomTime) - billion);
+				chooseTimeSec += 1;
+			}
+
+
 		}
-		
+				
 	}
 
 	return 0;

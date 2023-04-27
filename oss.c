@@ -70,7 +70,7 @@ bool deadlock2();
 
 //global variables
 int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
-int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 500500, grantedRequests = 0, deadlockTime = 1;
+int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 5500, grantedRequests = 0, deadlockTime = 1;
 bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
 			case 'h':
 				help();
 			case 'v':
-				printf("Verbose turned on");
+				printf("\nVerbose turned on");
 				verboseOn = true;
 				break;
 			case 'f':
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
 	}
 
 
-	printf("Program is starting...");
+	printf("\nProgram is starting...");
 
 
 	//Opening log file
@@ -217,20 +217,17 @@ int main(int argc, char **argv) {
 			chooseTimeSec += 1;
 		}
 
-		printf("\n\nRight before loop, parent pid is: %d", getpid());
-
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while(!doneRunning) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
-				if((simulWorkers < 18) && !doneCreating) {
+				if((simulWorkers < 1) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
 							currentProcess = processTable[i];
 							break;
 						}
 					}
-
 
 					//Forking child
 					tempPid = fork();
@@ -268,14 +265,15 @@ int main(int argc, char **argv) {
 
 					simulWorkers++;
 					totalWorkers++;
-
 				}
 			}
 
 
 
-			if(totalWorkers > 40 || time(NULL) > endTime) 
+			if(totalWorkers > 40 || time(NULL) > endTime) {
 				doneCreating = true;
+				printf("\nDone creating workers, total = %d", totalWorkers); 
+			}
 
 			received.pid = 0;
 
@@ -354,7 +352,9 @@ int main(int argc, char **argv) {
 					}
 
 					message.mtype = received.pid;
-					message.resource = received.resource;
+					message.resource = (0 - received.resource);
+
+					printf("OSS:   Sending back to child %d:   %d", received.pid, message.resource);
 					
 					//Sending message back to child the good news that their request was granted
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
@@ -516,13 +516,14 @@ int main(int argc, char **argv) {
 		
 			//every second do deadlock detection
 			if(*seconds >= deadlockTime) {
+				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
 				for(i = 0; i < 18; i++) {
 					for(j = 0; j < 10; j++) {
 						allocatedResources[i][j] = processTable[i].currentResources[j];
 					}
 				}
-				deadlockTime++;
+				deadlockTime += 2;
 				bool deadlockFound = true;
 
 				while(deadlockFound) {
@@ -540,6 +541,7 @@ int main(int argc, char **argv) {
 						}
 					}
 				}
+				printf("\nDone with deadlock detection");
 			}
 
 
