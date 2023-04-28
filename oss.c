@@ -80,7 +80,7 @@ key_t key;
 int maxResources[18][10] = {{ 0 }};
 int availableResources[10] = {totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources, totalResources };
 int allocatedResources[18][10] = {{ 0 }};
-int resourceRequests[10] = { 0 };
+int resourceRequests[18][10] = {{ 0 }};
 int resourceReleases[10] = { 0 };
 int deadlockedProcesses[18] = { 0 };
 
@@ -324,15 +324,11 @@ int main(int argc, char **argv) {
 				}
 				
 				//Increasing the number of requests for that resource
-				resourceRequests[resourceRequest] += 1;
+				//resourceRequests[resourceRequest] += 1;
 				if(availableResources[resourceRequest] > 0) {
 					//reduce available resource and resource requests since it was granted
 					availableResources[resourceRequest] -= 1;
-					resourceRequests[resourceRequest] -= 1;
-
-					printf("\nBefore resource increment: %d", currentProcess.currentResources[resourceRequest]);
-					currentProcess.currentResources[resourceRequest] += 1;
-					printf("\nAfter resource increment: %d", currentProcess.currentResources[resourceRequest]);
+					//resourceRequests[resourceRequest] -= 1;
 
 
 					printf("\nOSS: Current process pid: %d", currentProcess.pid);
@@ -376,9 +372,11 @@ int main(int argc, char **argv) {
 						perror("\n\nmsgsend to child failed\n\n");
 						exit(1);
 					}
+
 					//Increasing number of resources by 1 for process
 					currentProcess.currentResources[resourceRequest] += 1;
-					printf("\nOSS: Process %d's current number of type R%d resource: %d", currentProcess.pid, (message.resource * -1), currentProcess.currentResources[resourceRequest]);
+					printf("\nOSS: Process %d's current number of type R%d resource: %d", currentProcess.pid, (message.resource * -1), 
+							currentProcess.currentResources[resourceRequest]);
 
 				} else {
 					//process gets blocked and requested resource gets set for future granting
@@ -414,7 +412,7 @@ int main(int argc, char **argv) {
 				//If any processes are blocked and waiting on a resource
 				if(blocked > 0) {
 					//Decrease number of requests for this resource instance since it's about to be granted
-					resourceRequests[resource] -= 1;
+					//resourceRequests[resource] -= 1;
 
 					printf("\n\n\nCurrently available resources: ");
 					for(i = 0; i < 10; i++) {
@@ -469,8 +467,10 @@ int main(int argc, char **argv) {
 
 				printf("\n     Oss: resources released by %d:  ", currentPid);
 
+				terminateProcess(currentProcess);
 
-				//For each of the 10 resource types
+
+				/*//For each of the 10 resource types
 				for(i = 0; i < 10; i++) {
 					//If the terminating process has any of that resource
 					if(currentProcess.currentResources[i] > 0) {
@@ -503,19 +503,18 @@ int main(int argc, char **argv) {
 									processTable[j].requestedResource = -1;
 									resourceReleases[i] += 1;
 									availableResources[i] -= 1;
-									resourceRequests[i] -= 1;
 									//Remove one blocked processs since it got its required resource
 									blocked--;	
 									break;
 								}
 							}
 						}
-						
+						currentProcess.currentResources[i] = 0;
 					}
 				}
 
 				//Decreasing simul workers
-				simulWorkers--;
+				simulWorkers--;*/
 
 				//Testing 
 				printf("terminating process, current total simul processes after - %d", simulWorkers);
@@ -536,21 +535,34 @@ int main(int argc, char **argv) {
 			/*if(*seconds >= deadlockTime) {
 				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
-				for(i = 0; i < 18; i++) {
-					for(j = 0; j < 10; j++) {
-						allocatedResources[i][j] = processTable[i].currentResources[j];
-					}
-				}
-				deadlockTime += 2;
+			
+				deadlockTime += 1;
 				bool deadlockFound = true;
 
 				while(deadlockFound) {
-					deadlockFound = deadlock();
+					for(i = 0; i < 18; i++) {
+						for(j = 0; j < 10; j++) {
+							allocatedResources[i][j] = processTable[i].currentResources[j];
+						}
+					}
+
+					for(i = 0; i < 18; i++) {
+						for(j = 0; j < 10; j++) {
+							if(processTable[i].requestedResource > 0) {
+								resourceRequests[i][j] = processTable[i].requestedResource;
+							}
+							else
+								resourceRequests[i][j] = 0;
+						}
+					}
+
+
+					deadlockFound = deadlock2();
 					if(deadlockFound) {
 						for(i = 0; i < 18; i++) {
 							//Terminate processes involved 
 							if(deadlockedProcesses[i] == 1) {
-								//terminateProcess(processTable[i]);
+								terminateProcess(processTable[i]);
 								printf("\nDeadlock status: %d     current deadlocked process terminated: %d", deadlockFound, processTable[i].pid); 
 								currentProcess.occupied = 0;
 								currentProcess.pid = 0;
@@ -625,7 +637,7 @@ void terminateProcess(struct PCB currentProcess) {
 	printf("\n\n\nTerminating processn\n");
 
 	//Connect to message queue
-	if((key = ftok("msgq.txt", 'B')) == -1) {
+	if((key = ftok("msgq.txt", 1)) == -1) {
 		perror("ftok");
 		exit(1);
 	}
@@ -636,8 +648,8 @@ void terminateProcess(struct PCB currentProcess) {
 	}
 
 	message.mtype = 1;
-
-	//do rest of terminate stuff from above
+	
+	//For each of the 10 resource types
 	for(i = 0; i < 10; i++) {
 		//If the terminating process has any of that resource
 		if(currentProcess.currentResources[i] > 0) {
@@ -649,8 +661,9 @@ void terminateProcess(struct PCB currentProcess) {
 
 			
 			//For each instance of that resource the process has
-			for(i = 0; i < count; i++) {
-				availableResources[i] += 1;
+			for(k = 0; k < count; k++) {
+				availableResources[k] += 1;
+			
 				
 				//For each process that might need that resource
 				for(j = 0; j < 18; j++) {
@@ -669,15 +682,19 @@ void terminateProcess(struct PCB currentProcess) {
 						processTable[j].requestedResource = -1;
 						resourceReleases[i] += 1;
 						availableResources[i] -= 1;
-						resourceRequests[i] -= 1;
 						//Remove one blocked processs since it got its required resource
 						blocked--;	
 						break;
 					}
 				}
 			}
+			currentProcess.currentResources[i] = 0;
 		}
 	}
+
+	//Decreasing simul workers
+	simulWorkers--;
+
 }
 
 
@@ -752,7 +769,7 @@ static int setupitimer(void) {
 
 
 
-bool deadlock() {
+/*bool deadlock() {
 	int i, j;
 	int work[10];
 	int finish[10];
@@ -809,32 +826,40 @@ bool deadlock() {
 
 	//No deadlock detected
 	return 0;
-}
+}*/
 
 
 
-/*bool deadlock2() {
+bool deadlock2() {
+	printf("\n\n\n\nIn deadlock2()\n");
 	int work[10];
-	bool finish[18];
+	bool finish[simulWorkers];
 
-	for(i (0); i < 10; work[i] = availableResources[i++]);
-	for(i (0); i < simulWorkers; finish[i++]); = false;
+	for(i = 0; i < 10; i++) 
+		work[i] = availableResources[i];
 
-	int p(0);
+	for(i = 0; i < simulWorkers; i++)
+		finish[i] = false;
 
-	for(; p < n; p++) {
+
+	int p;
+
+	for(p = 0; p < simulWorkers; p++) {
 		if(finish[p]) continue;
 		if(req_lt_avail(p)) {
 			finish[p] = true;
-			for(i (0); i < 10; i++)
-				work[i] += allocatedResources[p*m+i];
+			for(i = 0; i < 10; i++)
+				work[i] += allocatedResources[p][i];
 			p = -1;
-		}	
+		}
+		deadlockedProcesses[p] = 1;	
 	}
 
-	for(p = 0; p < n; p++) {
-		if(!finish[p])
+	for(p = 0; p < simulWorkers; p++) {
+		if(!finish[p]) {
+			printf("Process %d is blocked", p);
 			break;
+		}
 	}
 
 	return(p != simulWorkers);
@@ -842,11 +867,11 @@ bool deadlock() {
 }
 
 bool req_lt_avail(int p) {
-	i (0);
+	i = 0;
 	for(; i < 10; i++) {
-		if(resourceRequests[p * 10 + i] < availableResources[i])
+		if(resourceRequests[p][i] < availableResources[i])
 			break;
 	}
 
 	return(i == 10);
-}*/
+}
