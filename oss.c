@@ -70,8 +70,9 @@ bool req_lt_avail();
 
 
 //global variables
-int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99995, messageReceived, billion = 1000000000, resourceRequest = 0;
+int totalWorkers = 0, simulWorkers = 0, tempPid = 0, i, c, fileLines = 1, fileLineMax = 99990, messageReceived, billion = 1000000000, resourceRequest = 0;
 int processChoice = 0, tempValue = 0, currentPid, grantedInstantly = 0, blocked = 0, queueSize, j, nanoIncrement = 2500, grantedRequests = 0, deadlockTime = 1, k = 0;
+int blockedFirst = 0, deadlockTerminations = 0, terminatedSuccess = 0, deadlockRun = 0, avgDeadlockTerminations = 0;
 bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
@@ -86,9 +87,10 @@ int deadlockedProcesses[18] = { 0 };
 
 
 int main(int argc, char **argv) {
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, firstTime = true;
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
+	struct PCB tempProcess;
 
 	while((c = getopt(argc, argv, "hvf:")) != -1) {
 		switch(c)
@@ -228,9 +230,8 @@ int main(int argc, char **argv) {
 		//Keep running until 40 processes have run or 5 real-life seconds have passed
 		while(!doneRunning) {
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
-			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano) /*|| firstTime*/) {
-				firstTime = false;
-				if((simulWorkers < 1) && !doneCreating) {
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
+				if((simulWorkers < 18) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
 							currentProcess = processTable[i];
@@ -347,19 +348,25 @@ int main(int argc, char **argv) {
 						fprintf(logFile, "\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
 							fprintf(logFile, "\nP%d:     ", i);
-							for(j = 0; j < 10; j++) {     
+							for(j = 0; j < 10; j++) { 	
 								fprintf(logFile, "%d    ", processTable[i].currentResources[j]); 
 							}
 						}
 					
 						printf("\n      R0    R1    R2    R3    R4    R5     R6    R7    R8    R9");
 						for(i = 0; i < 18; i++) {
+							tempProcess = processTable[i];
 							printf("\nP%d:     ", i);
-							for(j = 0; j < 10; j++) {     
-								printf("%d    ", processTable[i].currentResources[j]);
+							for(j = 0; j < 10; j++) {    
+								printf("%d    ", tempProcess.currentResources[j]);
 							}
 						}
 											
+					}
+
+					printf("\n\nOSS:  process %d's resources:  ", currentProcess.pid);
+					for(i = 0; i < 10; i++) {
+						printf("R%d  ", currentProcess.currentResources[i]);
 					}
 
 					message.mtype = received.pid;
@@ -381,6 +388,7 @@ int main(int argc, char **argv) {
 				} else {
 					//process gets blocked and requested resource gets set for future granting
 					blocked++;
+					blockedFirst++;
 					currentProcess.requestedResource = resourceRequest;
 
 					printf("\nOss:  no instances of R%d available, process %d put on blocked queue at time %d:%d", resourceRequest, currentProcess.pid, 
@@ -401,7 +409,7 @@ int main(int argc, char **argv) {
 
 				printf("\nBefore resource decrement: %d", currentProcess.currentResources[resourceRequest]);
 				currentProcess.currentResources[resource] -= 1;
-				printf("\nAfter resource increment: %d", currentProcess.currentResources[resourceRequest]);
+				printf("\nAfter resource decrement: %d", currentProcess.currentResources[resourceRequest]);
 
 				printf("\n\n\n\n\nOss: process %d is releasing an instance of R%d at time %d:%d", currentProcess.pid, resource, *seconds, *nanoSeconds);
 
@@ -411,9 +419,6 @@ int main(int argc, char **argv) {
 
 				//If any processes are blocked and waiting on a resource
 				if(blocked > 0) {
-					//Decrease number of requests for this resource instance since it's about to be granted
-					//resourceRequests[resource] -= 1;
-
 					printf("\n\n\nCurrently available resources: ");
 					for(i = 0; i < 10; i++) {
 						printf("%d, ", availableResources[i]);
@@ -431,7 +436,6 @@ int main(int argc, char **argv) {
 
 					//Tell lucky process their wish is granted
 					message.mtype = currentProcess.pid;
-					message.intData = currentProcess.pid;
 					message.resource = (0 - resource);
 					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 						perror("\n\nmsgsend to child failed");
@@ -540,6 +544,7 @@ int main(int argc, char **argv) {
 				bool deadlockFound = true;
 
 				while(deadlockFound) {
+					deadlockRun++;
 					for(i = 0; i < 18; i++) {
 						for(j = 0; j < 10; j++) {
 							allocatedResources[i][j] = processTable[i].currentResources[j];
@@ -563,6 +568,7 @@ int main(int argc, char **argv) {
 							//Terminate processes involved 
 							if(deadlockedProcesses[i] == 1) {
 								terminateProcess(processTable[i]);
+								deadlockTerminations++;
 								printf("\nDeadlock status: %d     current deadlocked process terminated: %d", deadlockFound, processTable[i].pid); 
 								currentProcess.occupied = 0;
 								currentProcess.pid = 0;
@@ -587,6 +593,24 @@ int main(int argc, char **argv) {
 			//printf("\nCurrent time: %d:%d", *seconds, *nanoSeconds);
 
 		}
+
+
+
+		fprintf(logFile, "\nEnding Stats: ");
+		fprintf(logFile, "\nNumber of processes that got their requested resource instantly: %d", grantedInstantly);
+		fprintf(logFile, "\nNumber of processes who got blocked first: %d", blockedFirst);
+		fprintf(logFile, "\nProcesses terminated by deadlock: %d", deadlockTerminations);
+		fprintf(logFile, "\nProcesses terminated successfully: %d", terminatedSuccess);
+		fprintf(logFile, "\nNumber of times the deadlock detection ran: %d", deadlockRun);
+		fprintf(logFile, "\nAverage terminations per deadlock: %f", ((float)deadlockTerminations / (float)deadlockRun));
+
+		printf("\nEnding Stats: ");
+		printf("\nNumber of processes that got their requested resource instantly: %d", grantedInstantly);
+		printf("\nNumber of processes who got blocked first: %d", blockedFirst);
+		printf("\nProcesses terminated by deadlock: %d", deadlockTerminations);
+		printf("\nProcesses terminated successfully: %d", terminatedSuccess);
+		printf("\nNumber of times the deadlock detection ran: %d", deadlockRun);
+		printf("\nAverage terminations per deadlock: %f", ((float)deadlockTerminations / (float)deadlockRun));
 
 		
 
@@ -634,7 +658,7 @@ int help() {
 
 
 void terminateProcess(struct PCB currentProcess) {
-	printf("\n\n\nTerminating processn\n");
+	printf("\n\n\nTerminating process\n");
 
 	//Connect to message queue
 	if((key = ftok("msgq.txt", 1)) == -1) {
@@ -672,7 +696,6 @@ void terminateProcess(struct PCB currentProcess) {
 
 						//Send process the message that they're finally getting the resource
 						message.mtype = processTable[j].pid;
-						//message.intData = processTable[j].pid;
 						if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 							perror("\n\nmsgsend to child failed");
 							exit(1);
@@ -680,13 +703,13 @@ void terminateProcess(struct PCB currentProcess) {
 						
 						//Decrease the available instances of that resource, the requests for it, and the process's request 
 						processTable[j].requestedResource = -1;
-						resourceReleases[i] += 1;
 						availableResources[i] -= 1;
 						//Remove one blocked processs since it got its required resource
 						blocked--;	
 						break;
 					}
 				}
+				resourceReleases[i] += 1;
 			}
 			currentProcess.currentResources[i] = 0;
 		}
@@ -694,6 +717,7 @@ void terminateProcess(struct PCB currentProcess) {
 
 	//Decreasing simul workers
 	simulWorkers--;
+	terminatedSuccess++;
 
 }
 
