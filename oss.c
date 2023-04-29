@@ -598,7 +598,7 @@ void terminateProcess(struct PCB currentProcess) {
 	}
 
 	if(fileLines < fileLineMax && verboseOn) {
-		fprintf(logFile, "\nResources released by %d: ");
+		fprintf(logFile, "\nResources released by %d: ", currentProcess.pid);
 		fileLines++;
 	}
 
