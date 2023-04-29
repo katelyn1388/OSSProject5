@@ -105,8 +105,6 @@ int main(int argc, char** iterations) {
 		chooseTimeSec += 1;
 	}
 
-	printf("Choose time: %d:%d", *sharedSeconds, *sharedNanoSeconds);
-
 	bool ready = false;
 	
 	//Do nothing before at least 1 second has passed
@@ -128,7 +126,6 @@ int main(int argc, char** iterations) {
 
 			if(task == 0) {
 				message.choice = 3;
-				printf("\nProcess %d is terminating\n", getpid());
 
 				//send message to parent that they're terminating and releasing all resources
 				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
@@ -167,8 +164,6 @@ int main(int argc, char** iterations) {
 
 				} while(enough == false);
 
-				printf("\n\n%d: requesting R%d", getpid(), message.resource);
-
 				
 				message.choice = 1;
 
@@ -177,7 +172,6 @@ int main(int argc, char** iterations) {
 					perror("msgsend to parent failed");
 					exit(1);
 				} 
-
 
 
 				while(!receivedMessage) {
@@ -203,8 +197,6 @@ int main(int argc, char** iterations) {
 				}
 				
 
-				printf("\n%d: Getting R%d", getpid(), receivedResource);
-
 				printf("\n%d's current resource array: ", getpid());
 				for(i = 0; i < 10; i++) {
 					printf("%d, ", currentResources[i]);
@@ -229,7 +221,6 @@ int main(int argc, char** iterations) {
 					exit(1);
 				}
 
-				printf("\nProcess %d is releasing a resource\n", getpid());
 				resourceTotal--;
 			}
 
