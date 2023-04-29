@@ -127,7 +127,6 @@ int main(int argc, char** iterations) {
 			task = (rand() % (100 - 0 + 1)) + 0;
 
 			if(task == 0) {
-				//terminated = true;
 				message.choice = 3;
 				printf("\nProcess %d is terminating\n", getpid());
 
@@ -136,6 +135,26 @@ int main(int argc, char** iterations) {
 					perror("msgsend to parent failed");
 					exit(1);
 				}
+
+				while(!receivedMessage) {
+					if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
+						if(errno == ENOMSG) {
+							receivedMessage = false;
+						} else {
+							perror("msgrcv from parent failed");
+							exit(1);
+						}
+					} else
+						receivedMessage = true;
+
+
+					if(received.choice == 4) {
+						terminated = true;
+						receivedMessage = true;
+					} else
+						receivedMessage = false;			
+				}
+
 			//Process is choosing to request a resource
 			} else if(task >= 1 && task <= 95) {
 				do {
@@ -203,7 +222,6 @@ int main(int argc, char** iterations) {
 						currentResources[randomResource] -= 1;
 						chosen = true;
 					} 
-
 				}
 
 				if(msgsnd(msqid, &message, sizeof(message) - sizeof(long), 0) == -1) {
@@ -213,8 +231,8 @@ int main(int argc, char** iterations) {
 
 				printf("\nProcess %d is releasing a resource\n", getpid());
 				resourceTotal--;
-
 			}
+
 
 			//Generating next random time 
 			randomTime = (rand() % (randTimeMax - 0 + 1)) + 0;

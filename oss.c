@@ -110,15 +110,7 @@ int main(int argc, char **argv) {
 
 	printf("\nProgram is starting...");
 
-	/*printf("\nStarting resources for each process block: \n");
-	for(i = 0; i < 18; i++) {
-		printf("\n%d:", i);
-		for(j = 0; j < 10; j++) {	
-			printf("     --R%d:%d", j, processTable[i].currentResources[j]);
-		}
-	}*/
-
-
+	
 	//Opening log file
 	if(fileGiven) 
 		logFile = fopen(userFile, "w");
@@ -259,12 +251,18 @@ int main(int argc, char **argv) {
 					//Filling out process table for child process
 					currentProcess.occupied = 1;
 					currentProcess.pid = tempPid;
+					currentProcess.requestedResource = -1;
+					for(i = 0; i < 10; i++) {
+						currentProcess.currentResources[i] = 0;
+					}
 
 					char* args[] = {"./worker", 0};
 
 					//Execing child off
 					if(tempPid < 0) { 
 						perror("fork");
+						printf("Terminating: fork failed");
+						exit(1);
 					} else if(tempPid == 0) {
 						printf("execing a child: %d", getpid());
 						execlp(args[0], args[0], args[1], NULL); 
@@ -280,8 +278,10 @@ int main(int argc, char **argv) {
 
 
 			if(totalWorkers > 40 || time(NULL) > endTime) {
-				doneCreating = true;
-			//	printf("\nDone creating workers, total = %d", totalWorkers); 
+				if(doneCreating == false) {
+					doneCreating = true;
+					printf("\n\n\n\n\nDone creating workers, total = %d", totalWorkers); 
+				}
 			}
 
 			received.pid = 0;
@@ -327,14 +327,10 @@ int main(int argc, char **argv) {
 				//Increasing the number of requests for that resource
 				//resourceRequests[resourceRequest] += 1;
 				if(availableResources[resourceRequest] > 0) {
-					//reduce available resource and resource requests since it was granted
+					//reduce available resource
 					availableResources[resourceRequest] -= 1;
-					//resourceRequests[resourceRequest] -= 1;
-
 
 					printf("\nOSS: Current process pid: %d", currentProcess.pid);
-
-					
 
 					grantedInstantly++;
 					grantedRequests++;
@@ -428,7 +424,7 @@ int main(int argc, char **argv) {
 
 					//For each process, if they need the resource just released, give it to them
 					for(i = 0; i < 18; i++) {
-						if(processTable[i].requestedResource == resource) {
+						if(processTable[i].requestedResource == resource && processTable[i].occupied == 1) {
 							currentProcess = processTable[i];
 							break;
 						}
@@ -463,6 +459,7 @@ int main(int argc, char **argv) {
 				currentPid = received.pid;
 				currentProcess.occupied = 0;
 				currentProcess.pid = 0;
+				currentProcess.requestedResource = 0;
 
 				//terminateProcess(currentProcess);
 			
@@ -527,6 +524,16 @@ int main(int argc, char **argv) {
 					printf("%d, ", availableResources[i]);
 				}
 
+				message.mtype = currentPid;
+				message.choice = 4;
+				if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+					perror("\n\nmsgsend to child failed");
+					exit(1);
+				}
+
+
+
+
 			}
 
 			if(doneCreating && simulWorkers == 0) { 
@@ -536,7 +543,7 @@ int main(int argc, char **argv) {
 		
 		
 			//every second do deadlock detection
-			/*if(*seconds >= deadlockTime) {
+			if (*seconds >= deadlockTime) {
 				printf("\nStarting deadlock detection");
 				//allocatedResources = forloop stuff
 			
@@ -572,13 +579,14 @@ int main(int argc, char **argv) {
 								printf("\nDeadlock status: %d     current deadlocked process terminated: %d", deadlockFound, processTable[i].pid); 
 								currentProcess.occupied = 0;
 								currentProcess.pid = 0;
+								currentProcess.requestedResource = -1;
 							}
 
 						}
 					}
 				}
 				printf("\nDone with deadlock detection");
-			}*/
+			}
 
 
 			//incrementClock(5000);
@@ -692,7 +700,7 @@ void terminateProcess(struct PCB currentProcess) {
 				//For each process that might need that resource
 				for(j = 0; j < 18; j++) {
 					//If the currently tested process needs that resource
-					if(processTable[j].requestedResource == resourceRequest) {
+					if(processTable[j].requestedResource == resourceRequest && processTable[j].occupied == 1) {
 
 						//Send process the message that they're finally getting the resource
 						message.mtype = processTable[j].pid;
