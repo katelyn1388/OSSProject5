@@ -64,9 +64,9 @@ void terminateProcess(struct PCB process);
 static void myhandler(int s);
 static int setupinterrupt();
 static int setupitimer();
-bool deadlock();
-bool deadlock2();
+bool deadlock(int *deadlockedProcesses);
 bool req_lt_avail();
+void terminateDeadlocked(struct PCB process);
 
 
 //global variables
@@ -469,53 +469,7 @@ int main(int argc, char **argv) {
 				printf("\n     Oss: resources released by %d:  ", currentPid);
 
 				terminateProcess(currentProcess);
-
-
-				/*//For each of the 10 resource types
-				for(i = 0; i < 10; i++) {
-					//If the terminating process has any of that resource
-					if(currentProcess.currentResources[i] > 0) {
-						int count = currentProcess.currentResources[i];
-						if(fileLines < fileLineMax && verboseOn) 
-							fprintf(logFile, "R%d: %d, ", i, count);
-
-						printf("R%d: %d, ", i, count);
-
-						
-						//For each instance of that resource the process has
-						for(k = 0; k < count; k++) {
-							availableResources[k] += 1;
-						
-							
-							//For each process that might need that resource
-							for(j = 0; j < 18; j++) {
-								//If the currently tested process needs that resource
-								if(processTable[j].requestedResource == resourceRequest) {
-
-									//Send process the message that they're finally getting the resource
-									message.mtype = processTable[j].pid;
-									//message.intData = processTable[j].pid;
-									if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
-										perror("\n\nmsgsend to child failed");
-										exit(1);
-									}
-									
-									//Decrease the available instances of that resource, the requests for it, and the process's request 
-									processTable[j].requestedResource = -1;
-									resourceReleases[i] += 1;
-									availableResources[i] -= 1;
-									//Remove one blocked processs since it got its required resource
-									blocked--;	
-									break;
-								}
-							}
-						}
-						currentProcess.currentResources[i] = 0;
-					}
-				}
-
-				//Decreasing simul workers
-				simulWorkers--;*/
+			
 
 				//Testing 
 				printf("terminating process, current total simul processes after - %d", simulWorkers);
@@ -568,9 +522,10 @@ int main(int argc, char **argv) {
 						}
 					}
 
+					int deadlockedProcesses[simulWorkers];
 
-					deadlockFound = deadlock2();
-					if(deadlockFound) {
+					deadlockFound = deadlock(deadlockedProcesses);
+					/*if(deadlockFound) {
 						for(i = 0; i < 18; i++) {
 							//Terminate processes involved 
 							if(deadlockedProcesses[i] == 1) {
@@ -583,7 +538,7 @@ int main(int argc, char **argv) {
 							}
 
 						}
-					}
+					}*/
 				}
 				printf("\nDone with deadlock detection");
 			}
@@ -597,8 +552,6 @@ int main(int argc, char **argv) {
 				*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
 				*seconds += 1;
 			}
-
-			//printf("\nCurrent time: %d:%d", *seconds, *nanoSeconds);
 
 		}
 
@@ -679,7 +632,6 @@ void terminateProcess(struct PCB currentProcess) {
 		exit(1);
 	}
 
-	message.mtype = 1;
 	
 	//For each of the 10 resource types
 	for(i = 0; i < 10; i++) {
@@ -800,72 +752,11 @@ static int setupitimer(void) {
 
 
 
-
-/*bool deadlock() {
-	int i, j;
-	int work[10];
-	int finish[10];
-	int need[18][10];
-	int numFinished = 0;
-	//int deadlockedProcesses[numberOfProcesses];
-	
-	//printf("\nDoing deadlock detection");
-
-	//Initializing work, finish, and need arrays
-	for(i = 0; i < 10; i++) {
-		work[i] = availableResources[i];
-	}
-
-	for(i = 0; i < 18; i++) {
-		finish[i] = 0;
-	}
-
-	for(i = 0; i < 18; i++) {
-		for(j = 0; j < 10; j++) {
-			need[i][j] = maxResources[i][j] - allocatedResources[i][j];
-		}
-	}
-
-	//Need matrix calculation
-	while(numFinished < 18) {
-		int found = 0;
-		for(i = 0; i < 18; i++) {
-			if(!finish[i]) {
-				int canFinish = 1;
-				for(j = 0; j < 10; j++) {
-					if(need[i][j] > work[j]) {
-						canFinish = 0;
-						break;
-					}
-				}
-				if(canFinish) {
-					for(j = 0; j < 10; j++) {
-						work[j] += allocatedResources[i][j];
-					}
-					finish[i] = 1;
-					deadlockedProcesses[i] = 1;
-					numFinished++;
-					found = 1;
-				}
-			}
-		}
-		
-		if(!found) {
-			//deadlock detected
-			return 1;
-		}
-	}
-
-	//No deadlock detected
-	return 0;
-}*/
-
-
-
-bool deadlock2() {
+bool deadlock(int *deadlockedProcesses) {
 	printf("\n\n\n\nIn deadlock2()\n");
 	int work[10];
 	bool finish[simulWorkers];
+	struct PCB process;
 
 	for(i = 0; i < 10; i++) 
 		work[i] = availableResources[i];
@@ -894,6 +785,19 @@ bool deadlock2() {
 		}
 	}
 
+	for(i = 0; i < simulWorkers; i++) {
+		if(processTable[i].occupied == 1) {
+			process = processTable[i];
+		}
+
+		if(deadlockedProcesses[p] == 1) {
+			terminateDeadlocked(process);
+			deadlockedProcesses[p] = 0;
+
+		}
+
+	}
+
 	return(p != simulWorkers);
 
 }
@@ -907,3 +811,68 @@ bool req_lt_avail(int p) {
 
 	return(i == 10);
 }
+
+
+void terminateDeadlocked(struct PCB currentProcess) {
+	printf("\n\n\nTerminating deadlocked process\n");
+
+	//Connect to message queue
+	if((key = ftok("msgq.txt", 1)) == -1) {
+		perror("ftok");
+		exit(1);
+	}
+
+	if((msqid = msgget(key, PERMS | IPC_CREAT)) == -1) {
+		perror("msgget");
+		exit(1);
+	}
+
+	
+	//For each of the 10 resource types
+	for(i = 0; i < 10; i++) {
+		//If the terminating process has any of that resource
+		if(currentProcess.currentResources[i] > 0) {
+			int count = currentProcess.currentResources[i];
+			if(fileLines < fileLineMax && verboseOn) 
+				fprintf(logFile, "R%d: %d, ", i, count);
+
+			printf("R%d: %d, ", i, count);
+
+			
+			//For each instance of that resource the process has
+			for(k = 0; k < count; k++) {
+				availableResources[k] += 1;
+			
+				
+				//For each process that might need that resource
+				for(j = 0; j < 18; j++) {
+					//If the currently tested process needs that resource
+					if(processTable[j].requestedResource == resourceRequest && processTable[j].occupied == 1) {
+
+						//Send process the message that they're finally getting the resource
+						message.mtype = processTable[j].pid;
+						if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+							perror("\n\nmsgsend to child failed");
+							exit(1);
+						}
+						
+						//Decrease the available instances of that resource, the requests for it, and the process's request 
+						processTable[j].requestedResource = -1;
+						availableResources[i] -= 1;
+						//Remove one blocked processs since it got its required resource
+						blocked--;	
+						break;
+					}
+				}
+				resourceReleases[i] += 1;
+			}
+			currentProcess.currentResources[i] = 0;
+		}
+	}
+
+	//Decreasing simul workers
+	simulWorkers--;
+	deadlockTerminations++;
+
+
+ }
